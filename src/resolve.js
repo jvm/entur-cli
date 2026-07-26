@@ -54,13 +54,13 @@ export async function resolvePlace(text, opts = {}) {
     || lon > 180
     || (idTypes && !idTypes.includes(id.split(':')[1]))
   ) {
-    throw new ApiError(`invalid geocoder result for ${what}`, {
-      code: 'invalid_response',
-      retryable: true,
-      hint: 'Retry once; report the geocoder response if it persists.',
-    });
+    throw invalidResult(what);
   }
-  enturId(id, what, { types: idTypes });
+  try {
+    enturId(id, what, { types: idTypes });
+  } catch {
+    throw invalidResult(what);
+  }
 
   stderr.write(`resolved '${inlineSafe(text)}' -> ${inlineSafe(id)} (${inlineSafe(name)})\n`);
   return { id, name, lat, lon };
@@ -68,6 +68,14 @@ export async function resolvePlace(text, opts = {}) {
 
 export function placeName(properties) {
   return properties?.names?.display ?? properties?.names?.default ?? '';
+}
+
+function invalidResult(what) {
+  return new ApiError(`invalid geocoder result for ${what}`, {
+    code: 'invalid_response',
+    retryable: true,
+    hint: 'Retry once; report the geocoder response if it persists.',
+  });
 }
 
 function looksLikeEnturId(value) {

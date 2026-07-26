@@ -111,16 +111,22 @@ export async function run(argv, opts = {}) {
     const coordinates = feature?.geometry?.coordinates;
     const lat = coordinates?.[1];
     const lon = coordinates?.[0];
+    const id = properties?.id ?? null;
+    const label = placeName(properties);
+    const layer = properties?.layer ?? '';
     if (
       !properties
       || !Array.isArray(coordinates)
       || !Number.isFinite(lat)
       || !Number.isFinite(lon)
+      || (id !== null && typeof id !== 'string')
+      || typeof label !== 'string'
+      || typeof layer !== 'string'
     ) throw invalidResponse();
     return {
-      id: properties.id ?? null,
-      label: placeName(properties),
-      layer: properties.layer ?? '',
+      id,
+      label,
+      layer,
       lat,
       lon,
     };

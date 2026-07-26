@@ -92,16 +92,19 @@ export async function run(argv, opts = {}) {
 
   const data = {
     stop: { id: place.id, name: place.name },
-    departures: place.estimatedCalls.map((call) => ({
-      time: call?.expectedDepartureTime ?? null,
-      aimedTime: call?.aimedDepartureTime ?? null,
-      realtime: call?.realtime ?? false,
-      cancelled: call?.cancellation ?? false,
-      line: call?.serviceJourney?.line?.publicCode ?? '',
-      mode: call?.serviceJourney?.line?.transportMode ?? '',
-      destination: call?.destinationDisplay?.frontText ?? '',
-      quay: call?.quay?.publicCode ?? '',
-    })),
+    departures: place.estimatedCalls.map((call) => {
+      if (!call || typeof call !== 'object') throw invalidResponse();
+      return {
+        time: call.expectedDepartureTime ?? null,
+        aimedTime: call.aimedDepartureTime ?? null,
+        realtime: call.realtime ?? false,
+        cancelled: call.cancellation ?? false,
+        line: call.serviceJourney?.line?.publicCode ?? '',
+        mode: call.serviceJourney?.line?.transportMode ?? '',
+        destination: call.destinationDisplay?.frontText ?? '',
+        quay: call.quay?.publicCode ?? '',
+      };
+    }),
   };
   const lines = data.departures.length
     ? data.departures.map((departure) => {

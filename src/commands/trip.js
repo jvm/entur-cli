@@ -113,16 +113,19 @@ export async function run(argv, opts = {}) {
         start: pattern.expectedStartTime ?? null,
         end: pattern.expectedEndTime ?? null,
         duration: pattern.duration ?? null,
-        legs: pattern.legs.map((leg) => ({
-          mode: leg?.mode ?? '',
-          line: leg?.line?.publicCode ?? null,
-          from: leg?.fromPlace?.name ?? '',
-          to: leg?.toPlace?.name ?? '',
-          start: leg?.expectedStartTime ?? null,
-          end: leg?.expectedEndTime ?? null,
-          distance: leg?.distance ?? null,
-          duration: leg?.duration ?? null,
-        })),
+        legs: pattern.legs.map((leg) => {
+          if (!leg || typeof leg !== 'object') throw invalidResponse();
+          return {
+            mode: leg.mode ?? '',
+            line: leg.line?.publicCode ?? null,
+            from: leg.fromPlace?.name ?? '',
+            to: leg.toPlace?.name ?? '',
+            start: leg.expectedStartTime ?? null,
+            end: leg.expectedEndTime ?? null,
+            distance: leg.distance ?? null,
+            duration: leg.duration ?? null,
+          };
+        }),
       };
     }),
   };

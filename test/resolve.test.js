@@ -60,11 +60,21 @@ test('no geocoder match is a usage error suggesting geocode search', async () =>
 });
 
 test('malformed geocoder features become retryable API errors', async () => {
-  const fetchImpl = fakeFetch(jsonRes({ features: [{ properties: {}, geometry: {} }] }));
-  await assert.rejects(
-    resolvePlace('oslo', { fetchImpl, stderr: quietStderr }),
-    (err) => err instanceof ApiError && err.code === 'invalid_response' && err.retryable,
+  const fetchImpl = fakeFetch(
+    jsonRes({ features: [{ properties: {}, geometry: {} }] }),
+    jsonRes({
+      features: [{
+        properties: { id: 'not-an-entur-id', names: { display: 'Oslo' } },
+        geometry: { coordinates: [10.75, 59.91] },
+      }],
+    }),
   );
+  for (const query of ['oslo', 'bergen']) {
+    await assert.rejects(
+      resolvePlace(query, { fetchImpl, stderr: quietStderr }),
+      (err) => err instanceof ApiError && err.code === 'invalid_response' && err.retryable,
+    );
+  }
 });
 
 test('free-text control characters are rejected before fetch', async () => {
