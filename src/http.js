@@ -45,8 +45,11 @@ export async function request(url, opts = {}) {
   validateTimeout(timeoutSec);
 
   const endpoint = displayUrl(url);
+  const identifiedClient = clientName(opts.clientName);
+  const correlationId = requestCorrelationId(opts.correlationId);
   const abort = requestAbort(timeoutSec, externalSignal);
-  const headers = { 'ET-Client-Name': clientName(opts.clientName), Accept: 'application/json' };
+  const headers = { 'ET-Client-Name': identifiedClient, Accept: 'application/json' };
+  if (correlationId !== undefined) headers['X-Correlation-Id'] = correlationId;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
   try {
@@ -175,6 +178,23 @@ function validateTimeout(timeoutSec) {
       hint: `Pass --timeout with a value up to ${MAX_TIMEOUT_SECONDS}.`,
     });
   }
+}
+
+function requestCorrelationId(value) {
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== 'string'
+    || !value
+    || value.length > 128
+    || /[\u0000-\u001f\u007f-\u009f]/.test(value)
+  ) {
+    throw new UsageError('--correlation-id must be non-empty text of at most 128 characters without control characters', {
+      code: 'invalid_argument',
+      field: 'correlation-id',
+      hint: 'Pass an opaque request identifier such as trace-123.',
+    });
+  }
+  return value;
 }
 
 function requestAbort(timeoutSec, externalSignal) {

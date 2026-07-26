@@ -70,10 +70,27 @@ test('--json renders structured usage errors on stderr with clean stdout', () =>
   });
 });
 
-test('command help exits 0 and shows an example', () => {
-  const { status, stdout } = cli('trip', '--help');
-  assert.equal(status, 0);
-  assert.match(stdout, /entur trip "Oslo S" "Bergen stasjon"/);
+test('command help exits 0 and shows examples and exact Geocoder lookup', () => {
+  const trip = cli('trip', '--help');
+  assert.equal(trip.status, 0);
+  assert.match(trip.stdout, /entur trip "Oslo S" "Bergen stasjon"/);
+
+  const geocode = cli('geocode', '--help');
+  assert.equal(geocode.status, 0);
+  assert.match(geocode.stdout, /place <id\.\.\.>/);
+  assert.match(geocode.stdout, /omitted means no radius limit/);
+});
+
+test('place lookup with detached stdin fails promptly and structurally when IDs are missing', () => {
+  const { status, stdout, stderr, signal, error } = cli('geocode', 'place', '--json');
+  assert.equal(error, undefined);
+  assert.equal(signal, null);
+  assert.equal(status, 2);
+  assert.equal(stdout, '');
+  const payload = JSON.parse(stderr);
+  assert.equal(payload.error.code, 'missing_argument');
+  assert.equal(payload.error.field, 'ids');
+  assert.match(payload.error.hint, /NSR:StopPlace:59872/);
 });
 
 test('machine errors are structured for unknown commands and hide internal stacks', async () => {

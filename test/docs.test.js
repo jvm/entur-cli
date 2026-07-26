@@ -21,11 +21,34 @@ test('package, CLI, and documented machine-contract versions agree', async () =>
   assert.match(HELP, /--version/);
 });
 
-test('help and README use current options without stale v2 geocoder layers', async () => {
+test('help and README document the complete current Geocoder v3 surface', async () => {
   const readme = await readFile(new URL('README.md', root), 'utf8');
   const docs = [HELP, readme, geocode.help, departures.help, trip.help, vehicles.help, mobility.help].join('\n');
   assert.doesNotMatch(docs, /--layers venue/);
-  assert.match(geocode.help, /stopPlace/);
+  assert.doesNotMatch(geocode.help, /reverse search radius \(default 1\)/);
+  assert.match(HELP, /search, reverse, place/);
+  for (const value of [
+    'search',
+    'reverse',
+    'place',
+    '--weight',
+    '--bbox',
+    '--lang',
+    '--stop-place-types',
+    '--sources',
+    '--countries',
+    '--counties',
+    '--localities',
+    '--fare-zones',
+    '--fare-zone-authorities',
+    '--multimodal',
+    '--distance-sort',
+    '--correlation-id',
+  ]) {
+    assert.ok(geocode.help.includes(value), `geocode help is missing ${value}`);
+    assert.ok(readme.includes(value), `README is missing ${value}`);
+  }
+  assert.match(readme, /complete v3 feature data/);
   for (const leaf of [geocode.help, departures.help, trip.help, vehicles.help, mobility.help]) {
     assert.match(leaf, /--json/);
     assert.match(leaf, /--timeout/);

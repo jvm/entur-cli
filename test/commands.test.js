@@ -8,74 +8,256 @@ import * as vehicles from '../src/commands/vehicles.js';
 import * as mobility from '../src/commands/mobility.js';
 import { fakeFetch, jsonRes, quietStderr } from './helpers.js';
 
-const geocodeHit = {
-  features: [
-    {
-      geometry: { coordinates: [10.7522, 59.9109] },
-      properties: {
-        id: 'NSR:StopPlace:337',
-        names: { default: 'Oslo S', display: 'Oslo S, Oslo' },
-        layer: 'stopPlace',
-      },
+const geocodeFeature = {
+  type: 'Feature',
+  geometry: { type: 'Point', coordinates: [10.7522, 59.9109] },
+  properties: {
+    id: 'NSR:StopPlace:337',
+    names: { default: 'Oslo S', display: 'Oslo S, Oslo', label: 'Sentralstasjonen' },
+    layer: 'stopPlace',
+    source: 'nsr',
+    address: {
+      county: 'Oslo',
+      borough: 'Sentrum',
+      countyId: 'KVE:TopographicPlace:03',
+      locality: 'Oslo',
+      boroughId: 'KVE:Borough:03010001',
+      localityId: 'KVE:TopographicPlace:0301',
+      postalCode: '0154',
+      streetName: 'Jernbanetorget',
+      countryCode: 'no',
+      houseNumber: '1',
     },
-  ],
+    fareZones: ['RUT:FareZone:4'],
+    categories: ['station'],
+    description: { nor: 'Sentralstasjon' },
+    stopPlaceRole: 'parent',
+    stopPlaceTypes: ['railStation'],
+    transportModes: [{ mode: 'rail' }, { mode: 'bus', subMode: 'localBus' }],
+  },
 };
 
-test('geocode search builds the v3 URL and shapes results with metadata', async () => {
+function geocoderResult(features = [geocodeFeature], {
+  query = { text: 'oslo s', limit: 10, lang: 'no' },
+  bbox = [10.7522, 59.9109, 10.7522, 59.9109],
+} = {}) {
+  return {
+    type: 'FeatureCollection',
+    features,
+    ...(bbox == null ? {} : { bbox }),
+    metadata: {
+      query,
+      resultCount: features.length,
+      timestamp: '2026-07-26T12:00:00Z',
+    },
+  };
+}
+
+const geocodeHit = geocoderResult();
+
+test('geocode search builds the v3 URL and exposes the complete v3 feature shape', async () => {
   const fetchImpl = fakeFetch(jsonRes(geocodeHit));
   const res = await geocode.run(['search', 'oslo', 's', '--limit', '3'], { fetchImpl });
   assert.match(fetchImpl.calls[0].url, /autocomplete\?q=oslo\+s&limit=3/);
-  assert.deepEqual(res.meta, { subcommand: 'search', count: 1, limit: 3 });
-  assert.deepEqual(res.data, [
-    { id: 'NSR:StopPlace:337', label: 'Oslo S, Oslo', layer: 'stopPlace', lat: 59.9109, lon: 10.7522 },
-  ]);
+  assert.deepEqual(res.meta, {
+    subcommand: 'search',
+    count: 1,
+    limit: 3,
+    mayHaveMore: false,
+    geocoder: {
+      type: 'FeatureCollection',
+      metadata: geocodeHit.metadata,
+      bbox: geocodeHit.bbox,
+    },
+  });
+  assert.deepEqual(res.data, [{
+    id: 'NSR:StopPlace:337',
+    label: 'Oslo S, Oslo',
+    layer: 'stopPlace',
+    lat: 59.9109,
+    lon: 10.7522,
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [10.7522, 59.9109] },
+    names: { default: 'Oslo S', display: 'Oslo S, Oslo', label: 'Sentralstasjonen' },
+    source: 'nsr',
+    address: geocodeFeature.properties.address,
+    fareZones: ['RUT:FareZone:4'],
+    categories: ['station'],
+    description: { nor: 'Sentralstasjon' },
+    stopPlaceRole: 'parent',
+    stopPlaceTypes: ['railStation'],
+    transportModes: [{ mode: 'rail' }, { mode: 'bus', subMode: 'localBus' }],
+  }]);
   assert.match(res.lines[0], /NSR:StopPlace:337 {2}Oslo S, Oslo \[stopPlace\]/);
 });
 
-test('geocode reverse requires --lat and --lon', async () => {
+test('geocode search sends every v3 autocomplete option and correlation header', async () => {
+  const fetchImpl = fakeFetch(jsonRes(geocoderResult([])));
+  await geocode.run([
+    'search', 'Oslo',
+    '--lat', '59.9', '--lon', '10.7', '--radius', '25.5', '--weight', '0.75',
+    '--bbox', '10.5,59.8,10.9,60.0', '--limit', '3', '--lang', 'EN',
+    '--layers', 'stopPlace,groupOfStopPlaces',
+    '--stop-place-types', 'railStation,metroStation',
+    '--sources', 'NSR,openstreetmap', '--countries', 'NO,SE',
+    '--counties', 'KVE:TopographicPlace:03', '--localities', 'KVE:TopographicPlace:0301',
+    '--fare-zones', 'RUT:FareZone:4', '--fare-zone-authorities', 'RUT:Authority:RUT',
+    '--multimodal', 'all', '--correlation-id', 'trace-123',
+  ], { fetchImpl });
+
+  const call = fetchImpl.calls[0];
+  const params = new URL(call.url).searchParams;
+  assert.deepEqual(Object.fromEntries(params), {
+    q: 'Oslo',
+    lat: '59.9',
+    lon: '10.7',
+    radius: '25.5',
+    weight: '0.75',
+    bbox: '10.5,59.8,10.9,60',
+    limit: '3',
+    lang: 'EN',
+    layers: 'stopPlace,groupOfStopPlaces',
+    stopPlaceTypes: 'railStation,metroStation',
+    sources: 'nsr,openstreetmap',
+    countries: 'no,se',
+    counties: 'KVE:TopographicPlace:03',
+    localities: 'KVE:TopographicPlace:0301',
+    fareZones: 'RUT:FareZone:4',
+    fareZoneAuthorities: 'RUT:Authority:RUT',
+    multimodal: 'all',
+  });
+  assert.equal(call.init.headers['X-Correlation-Id'], 'trace-123');
+});
+
+test('geocode search can list bounded matches with filters and no query', async () => {
+  const fetchImpl = fakeFetch(jsonRes(geocoderResult([])));
+  await geocode.run(['search', '--stop-place-types', 'airport', '--limit', '20'], { fetchImpl });
+  const params = new URL(fetchImpl.calls[0].url).searchParams;
+  assert.equal(params.has('q'), false);
+  assert.equal(params.get('stopPlaceTypes'), 'airport');
+  assert.equal(params.get('limit'), '20');
+});
+
+test('geocode reverse uses native unbounded radius and exposes distance', async () => {
+  const reverseFeature = {
+    ...geocodeFeature,
+    properties: { ...geocodeFeature.properties, distance: 0.142 },
+  };
+  const fetchImpl = fakeFetch(jsonRes(geocoderResult([reverseFeature], {
+    query: { lat: 59.9, lon: 10.7, limit: 10, lang: 'no' },
+  })));
+  const res = await geocode.run([
+    'reverse', '--lat', '59.9', '--lon', '10.7', '--distance-sort', 'false', '--layers', 'stopPlace',
+  ], { fetchImpl });
+  const params = new URL(fetchImpl.calls[0].url).searchParams;
+  assert.equal(params.has('radius'), false);
+  assert.equal(params.get('distanceSort'), 'false');
+  assert.equal(params.get('layers'), 'stopPlace');
+  assert.equal(res.data[0].distance, 0.142);
+  assert.match(res.lines[0], /0\.142 km/);
+});
+
+test('geocode place looks up up to 100 exact IDs and preserves feature bbox', async () => {
+  const streetFeature = {
+    type: 'Feature',
+    bbox: [10.73, 59.91, 10.76, 59.92],
+    geometry: { type: 'Point', coordinates: [10.745, 59.915] },
+    properties: {
+      id: 'KVE:TopographicPlace:0301-oslo',
+      names: { default: 'Gaten', display: 'Gaten, Oslo' },
+      layer: 'street',
+      source: 'kartverket-matrikkelenadresse',
+    },
+  };
+  const fixture = geocoderResult([streetFeature], {
+    query: { limit: 2, lang: 'en' },
+    bbox: null,
+  });
+  const fetchImpl = fakeFetch(jsonRes(fixture));
+  const res = await geocode.run([
+    'place', 'NSR:StopPlace:59872,KVE:TopographicPlace:0301-oslo', '--lang', 'EN',
+  ], { fetchImpl });
+  const params = new URL(fetchImpl.calls[0].url).searchParams;
+  assert.equal(params.get('ids'), 'NSR:StopPlace:59872,KVE:TopographicPlace:0301-oslo');
+  assert.equal(params.get('lang'), 'EN');
+  assert.deepEqual(res.data[0].bbox, streetFeature.bbox);
+  assert.deepEqual(res.meta, {
+    subcommand: 'place',
+    count: 1,
+    requestedCount: 2,
+    geocoder: { type: 'FeatureCollection', metadata: fixture.metadata },
+  });
+});
+
+test('geocode validates endpoint-specific arguments before fetch', async () => {
   const fetchImpl = fakeFetch();
   await assert.rejects(
     geocode.run(['reverse', '--lon', '10.75'], { fetchImpl }),
     (err) => err instanceof UsageError && err.message === '--lat is required',
   );
-  assert.equal(fetchImpl.calls.length, 0);
-});
-
-test('geocode rejects unknown input and reverse positionals before fetch', async () => {
-  const fetchImpl = fakeFetch();
   await assert.rejects(geocode.run(['frobnicate'], { fetchImpl }), UsageError);
   await assert.rejects(geocode.run(['search', 'oslo', '--bogus'], { fetchImpl }), UsageError);
   await assert.rejects(
     geocode.run(['reverse', 'extra', '--lat', '59.9', '--lon', '10.7'], { fetchImpl }),
     (err) => err instanceof UsageError && err.code === 'unexpected_argument',
   );
-  assert.equal(fetchImpl.calls.length, 0);
-});
-
-test('geocode applies current v3 layers and focus radius', async () => {
-  const fetchImpl = fakeFetch(jsonRes({ features: [] }), jsonRes({ features: [] }));
-  await geocode.run([
-    'search', 'Oslo', '--lat', '59.9', '--lon', '10.7', '--radius', '25', '--layers', 'stopPlace,address',
-  ], { fetchImpl });
-  assert.match(fetchImpl.calls[0].url, /lat=59\.9&lon=10\.7&radius=25&layers=stopPlace%2Caddress/);
-
-  await geocode.run([
-    'reverse', '--lat', '59.9', '--lon', '10.7', '--layers', 'stopPlace',
-  ], { fetchImpl });
-  assert.match(fetchImpl.calls[1].url, /radius=1&limit=10&layers=stopPlace/);
-});
-
-test('geocode rejects invalid domains before fetch', async () => {
-  const fetchImpl = fakeFetch();
   for (const args of [
+    ['search'],
     ['search', 'Oslo', '--limit=0'],
     ['search', 'Oslo', '--limit=1.5'],
     ['search', 'Oslo', '--limit=101'],
     ['search', 'Oslo', '--lat', '91', '--lon', '10'],
     ['search', 'Oslo', '--radius', '1'],
+    ['search', 'Oslo', '--weight', '1.1'],
+    ['search', 'Oslo', '--bbox', '10.9,59.8,10.5,60.0'],
     ['search', 'Oslo', '--layers', 'venue'],
+    ['search', 'Oslo', '--layers', 'address', '--stop-place-types', 'railStation'],
+    ['search', 'Oslo', '--stop-place-types', 'station'],
+    ['search', 'Oslo', '--sources', 'openaddresses'],
+    ['search', 'Oslo', '--countries', 'nor'],
+    ['search', 'Oslo', '--fare-zones', 'RUT:TariffZone:4'],
+    ['search', 'Oslo', '--multimodal', 'both'],
+    ['search', 'Oslo', '--distance-sort', 'false'],
+    ['reverse', '--lat', '59.9', '--lon', '10.7', '--bbox', '10,59,11,60'],
+    ['reverse', '--lat', '59.9', '--lon', '10.7', '--distance-sort', 'nearest'],
+    ['place'],
+    ['place', 'not-an-id'],
+    ['place', 'NSR:StopPlace:1', '--limit', '1'],
+    ['place', 'NSR:StopPlace:1', '--layers', 'stopPlace'],
+    ['place', 'NSR:StopPlace:1', '--lang', 'not a language'],
+    ['place', 'NSR:StopPlace:1', '--correlation-id', 'bad\ntrace'],
   ]) await assert.rejects(geocode.run(args, { fetchImpl }), UsageError);
+  const tooMany = Array.from({ length: 101 }, (_, index) => `NSR:StopPlace:${index + 1}`);
+  await assert.rejects(geocode.run(['place', ...tooMany], { fetchImpl }), UsageError);
   assert.equal(fetchImpl.calls.length, 0);
+});
+
+test('geocode rejects malformed required and optional v3 response fields', async () => {
+  const wrongCount = structuredClone(geocodeHit);
+  wrongCount.metadata.resultCount = 2;
+  const badGeometry = structuredClone(geocodeHit);
+  badGeometry.features[0].geometry.coordinates = [10.7];
+  const missingSource = structuredClone(geocodeHit);
+  delete missingSource.features[0].properties.source;
+  const badAddress = structuredClone(geocodeHit);
+  badAddress.features[0].properties.address.postalCode = 154;
+  const badModes = structuredClone(geocodeHit);
+  badModes.features[0].properties.transportModes = [{ subMode: 'localBus' }];
+
+  for (const fixture of [
+    { ...geocodeHit, type: 'Collection' },
+    { type: 'FeatureCollection', features: [] },
+    wrongCount,
+    badGeometry,
+    missingSource,
+    badAddress,
+    badModes,
+  ]) {
+    await assert.rejects(
+      geocode.run(['search', 'Oslo'], { fetchImpl: fakeFetch(jsonRes(fixture)) }),
+      (err) => err instanceof ApiError && err.code === 'invalid_response',
+    );
+  }
 });
 
 const departuresFixture = {
@@ -407,13 +589,25 @@ test('all leaf-help examples parse and execute against fixtures', async () => {
       mod: geocode,
       example: 'entur geocode search "Oslo S" --layers stopPlace --limit 3',
       args: ['search', 'Oslo S', '--layers', 'stopPlace', '--limit', '3'],
-      responses: [jsonRes({ features: [] })],
+      responses: [jsonRes(geocoderResult([]))],
+    },
+    {
+      mod: geocode,
+      example: 'entur geocode search --stop-place-types airport --limit 20 --json',
+      args: ['search', '--stop-place-types', 'airport', '--limit', '20', '--json'],
+      responses: [jsonRes(geocoderResult([]))],
     },
     {
       mod: geocode,
       example: 'entur geocode reverse --lat 59.911 --lon 10.750 --radius 0.5 --layers stopPlace',
       args: ['reverse', '--lat', '59.911', '--lon', '10.750', '--radius', '0.5', '--layers', 'stopPlace'],
-      responses: [jsonRes({ features: [] })],
+      responses: [jsonRes(geocoderResult([]))],
+    },
+    {
+      mod: geocode,
+      example: 'entur geocode place NSR:StopPlace:59872 KVE:PlaceName:434810 --json',
+      args: ['place', 'NSR:StopPlace:59872', 'KVE:PlaceName:434810', '--json'],
+      responses: [jsonRes(geocoderResult([], { bbox: null }))],
     },
     {
       mod: departures,

@@ -59,13 +59,18 @@ test('time validator requires a real date and explicit valid offset', () => {
 test('httpOpts validates timeout and carries fetch cancellation options', () => {
   const fetchImpl = async () => new Response('{}');
   const controller = new AbortController();
-  const opts = httpOpts({ timeout: '0.25', 'client-name': 'company-application' }, {
+  const opts = httpOpts({
+    timeout: '0.25',
+    'client-name': 'company-application',
+    'correlation-id': 'trace-123',
+  }, {
     fetchImpl,
     signal: controller.signal,
   });
   assert.equal(opts.timeoutSec, 0.25);
   assert.equal(opts.fetchImpl, fetchImpl);
   assert.equal(opts.signal, controller.signal);
+  assert.equal(opts.correlationId, 'trace-123');
   assert.throws(
     () => httpOpts({ timeout: '301', 'client-name': 'company-application' }),
     UsageError,

@@ -13,7 +13,9 @@ npm link        # exposes `entur`
 
 ```sh
 entur geocode search "Oslo S" --layers stopPlace --limit 3
+entur geocode search --stop-place-types airport --limit 20 --json
 entur geocode reverse --lat 59.911 --lon 10.750 --radius 0.5
+entur geocode place NSR:StopPlace:59872 --json
 entur departures "Oslo" --limit 5 --modes rail
 entur trip "Oslo S" "Bergen stasjon" --limit 1
 entur vehicles --codespace ATB --mode bus --limit 5
@@ -22,6 +24,18 @@ entur mobility stations --lat 59.911 --lon 10.750 --form-factor bicycle
 ```
 
 Stops accept StopPlace IDs such as `NSR:StopPlace:59872` or free text. Departure free text is restricted to StopPlace results; trip endpoints may also be addresses or other routable places. Resolved places are reported on stderr. Run `entur <command> --help` for accepted values and limits.
+
+### Geocoder v3 coverage
+
+`entur geocode` covers all three current read endpoints:
+
+- `search [query...]` → `/v3/autocomplete`; omit the query to list places using a filter.
+- `reverse --lat <n> --lon <n>` → `/v3/reverse`; omitting `--radius` sends no radius limit.
+- `place <id...>` → `/v3/place`; accepts up to 100 exact IDs, as separate or comma-separated arguments.
+
+Search supports the focus options `--lat`, `--lon`, `--radius`, and `--weight`, plus the hard `--bbox minLon,minLat,maxLon,maxLat` filter. Search and reverse support `--layers`, `--stop-place-types`, `--sources`, `--countries`, `--counties`, `--localities`, `--fare-zones`, `--fare-zone-authorities`, and `--multimodal`. Reverse also supports `--distance-sort true|false`. All three endpoints support `--lang` and `--correlation-id`.
+
+Geocoder JSON records retain the stable convenience fields `id`, `label`, `layer`, `lat`, and `lon` and add the complete v3 feature data: GeoJSON type/geometry/bbox, names, source, address, reverse distance, fare zones, categories, descriptions, stop-place role/types, and transport modes. `meta.geocoder` carries the FeatureCollection type, API metadata, and collection bbox. `meta.mayHaveMore` is true when a search/reverse response reaches `--limit`; Geocoder has no cursor, so raise the limit up to 100 or narrow the filters.
 
 Times passed through `--time` must be real ISO 8601 date-times with `Z` or an explicit offset. Entur IDs are kept as opaque strings and are never parsed as numeric-only values.
 
@@ -77,6 +91,7 @@ Each HTTP request has a 15-second timeout by default; `--timeout` accepts up to 
 
 - Coordinates are decimal latitude/longitude degrees.
 - Journey `duration` and vehicle `delay` values are seconds; trip-leg `distance` is meters.
+- Geocoder reverse `distance` is kilometres; GeoJSON bboxes are `minLon,minLat,maxLon,maxLat`.
 - Date-time fields retain their ISO 8601 offsets. Human vehicle-update times retain `Z` or the supplied numeric offset.
 - Mobility `rangeMeters` is meters and `fuelPercent` is normalized to `0..100`.
 - Entur identifiers are strings and may contain non-numeric components.

@@ -31,11 +31,25 @@ test('clientName rejects invalid explicit and environment values', () => {
   }
 });
 
-test('request returns parsed JSON and sends ET-Client-Name', async () => {
+test('request returns parsed JSON and sends identification and correlation headers', async () => {
   const fetchImpl = fakeFetch(jsonRes({ ok: true }));
-  const data = await request('https://example.test/x', { fetchImpl, clientName: 'test-app' });
+  const data = await request('https://example.test/x', {
+    fetchImpl,
+    clientName: 'test-app',
+    correlationId: 'trace-123',
+  });
   assert.deepEqual(data, { ok: true });
   assert.equal(fetchImpl.calls[0].init.headers['ET-Client-Name'], 'test-app');
+  assert.equal(fetchImpl.calls[0].init.headers['X-Correlation-Id'], 'trace-123');
+});
+
+test('request rejects an unsafe correlation ID before fetch', async () => {
+  const fetchImpl = fakeFetch();
+  await assert.rejects(
+    request('https://example.test/x', { fetchImpl, correlationId: 'bad\ntrace' }),
+    (err) => err instanceof UsageError && err.field === 'correlation-id',
+  );
+  assert.equal(fetchImpl.calls.length, 0);
 });
 
 test('request maps non-2xx without exposing response or URL secrets', async () => {

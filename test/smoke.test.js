@@ -11,12 +11,36 @@ import * as mobility from '../src/commands/mobility.js';
 const skip = process.env.ENTUR_SMOKE ? false : 'set ENTUR_SMOKE=1 to run live smoke tests';
 const quiet = { stderr: { write() {} } };
 
-test('geocoder search and reverse return NSR/place features', { skip }, async () => {
-  const search = await geocode.run(['search', 'Oslo S', '--layers', 'stopPlace', '--limit', '1'], quiet);
+test('all Geocoder v3 endpoints and filter-only search return complete features', { skip }, async () => {
+  const search = await geocode.run([
+    'search', 'Oslo S',
+    '--lat', '59.91', '--lon', '10.75', '--radius', '25', '--weight', '0.75',
+    '--bbox', '10.5,59.8,10.9,60.0', '--limit', '1', '--lang', 'no',
+    '--layers', 'stopPlace', '--stop-place-types', 'railStation', '--sources', 'nsr',
+    '--countries', 'no', '--counties', 'KVE:TopographicPlace:03',
+    '--localities', 'KVE:TopographicPlace:0301', '--fare-zones', 'RUT:FareZone:4',
+    '--fare-zone-authorities', 'RUT:Authority:RUT', '--multimodal', 'all',
+    '--correlation-id', 'smoke-geocoder',
+  ], quiet);
   assert.match(search.data[0].id, /^NSR:/);
   assert.ok(search.data[0].label.includes('Oslo'));
-  const reverse = await geocode.run(['reverse', '--lat', '59.911', '--lon', '10.750', '--layers', 'stopPlace'], quiet);
-  assert.ok(reverse.data.length > 0);
+  assert.equal(search.data[0].type, 'Feature');
+  assert.equal(search.data[0].source, 'nsr');
+  assert.ok(search.data[0].names.display);
+  assert.equal(search.meta.geocoder.type, 'FeatureCollection');
+  assert.equal(search.meta.geocoder.metadata.resultCount, 1);
+
+  const filtered = await geocode.run(['search', '--stop-place-types', 'airport', '--limit', '1'], quiet);
+  assert.ok(filtered.data[0].stopPlaceTypes.includes('airport'));
+
+  const reverse = await geocode.run([
+    'reverse', '--lat', '59.911', '--lon', '10.750', '--layers', 'stopPlace', '--limit', '1',
+  ], quiet);
+  assert.equal(typeof reverse.data[0].distance, 'number');
+
+  const place = await geocode.run(['place', 'NSR:StopPlace:59872', '--lang', 'en'], quiet);
+  assert.equal(place.data[0].id, 'NSR:StopPlace:59872');
+  assert.equal(place.meta.requestedCount, 1);
 });
 
 test('journey planner resolves free text to a StopPlace departure board', { skip }, async () => {

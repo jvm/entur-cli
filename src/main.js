@@ -16,7 +16,7 @@ export const HELP = `entur - CLI for Entur's open APIs: Norwegian public transpo
 Usage: entur <command> [options]
 
 Commands:
-  geocode     find stops, addresses, and places (search, reverse)
+  geocode     find stops, addresses, and places (search, reverse, place)
   departures  departure board for a stop
   trip        plan a journey between two places
   vehicles    real-time vehicle positions

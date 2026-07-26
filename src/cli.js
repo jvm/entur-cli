@@ -63,6 +63,33 @@ export const GEOCODER_LAYERS = Object.freeze([
   'place',
 ]);
 
+export const GEOCODER_STOP_PLACE_TYPES = Object.freeze([
+  'onstreetBus',
+  'onstreetTram',
+  'airport',
+  'railStation',
+  'metroStation',
+  'busStation',
+  'coachStation',
+  'tramStation',
+  'harbourPort',
+  'ferryPort',
+  'ferryStop',
+  'liftStation',
+  'vehicleRailInterchange',
+  'other',
+]);
+
+export const GEOCODER_SOURCES = Object.freeze([
+  'openstreetmap',
+  'kartverket-matrikkelenadresse',
+  'kartverket-stedsnavn',
+  'nsr',
+  'custom-poi',
+]);
+
+export const GEOCODER_MULTIMODAL = Object.freeze(['parent', 'child', 'all']);
+
 const DECIMAL_RE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|([+-])(\d{2}):(\d{2}))$/;
 const TOKEN_RE = /^[A-Za-z0-9_-]+$/;
@@ -216,6 +243,7 @@ export function httpOpts(values, { fetchImpl, signal } = {}) {
   return {
     timeoutSec,
     clientName: clientName(values['client-name']),
+    correlationId: values['correlation-id'],
     fetchImpl,
     signal,
   };
