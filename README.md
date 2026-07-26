@@ -33,7 +33,7 @@ Stops accept NSR IDs (`NSR:StopPlace:59872`) or free text; free text is resolved
 
 ## Configuration
 
-Entur's open APIs need no key, only client identification via the `ET-Client-Name` header. Rate-limit quota is tracked per client name, so the default identifies *you*: `<your-os-username>-entur-cli`. Override it with `ENTUR_CLIENT_NAME` or `--client-name` (format `company-application`) for anything beyond personal use; for high-volume use, [contact Entur](https://developer.entur.no/) to register your client name for a proper quota. Don't share one name across many users, and don't generate unique names to dodge quotas — the header exists so Entur can attribute and contact traffic sources.
+Entur's open APIs need no key, only client identification via the `ET-Client-Name` header. Rate-limit quota is tracked per client name, so the default identifies *you*: `<your-os-username>-entur-cli`. This means your OS username is sent to Entur; set `ENTUR_CLIENT_NAME` or `--client-name` to any other identifier if you prefer not to. Use the same override (format `company-application`) for anything beyond personal use; for high-volume use, [contact Entur](https://developer.entur.no/) to register your client name for a proper quota. Don't share one name across many users, and don't generate unique names to dodge quotas — the header exists so Entur can attribute and contact traffic sources.
 
 ## Development
 

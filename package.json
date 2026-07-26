@@ -8,7 +8,7 @@
     "entur": "bin/entur.js"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test test/*.test.js"
   },
   "engines": {
     "node": ">=20"
