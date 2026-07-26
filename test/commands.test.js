@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { UsageError } from '../src/errors.js';
+import { ApiError, UsageError } from '../src/errors.js';
 import * as geocode from '../src/commands/geocode.js';
 import * as departures from '../src/commands/departures.js';
 import * as trip from '../src/commands/trip.js';
@@ -12,15 +12,20 @@ const geocodeHit = {
   features: [
     {
       geometry: { coordinates: [10.7522, 59.9109] },
-      properties: { id: 'NSR:StopPlace:337', names: { default: 'Oslo S', display: 'Oslo S, Oslo' }, layer: 'stopPlace' },
+      properties: {
+        id: 'NSR:StopPlace:337',
+        names: { default: 'Oslo S', display: 'Oslo S, Oslo' },
+        layer: 'stopPlace',
+      },
     },
   ],
 };
 
-test('geocode search builds autocompleteV3 URL and shapes results', async () => {
+test('geocode search builds the v3 URL and shapes results with metadata', async () => {
   const fetchImpl = fakeFetch(jsonRes(geocodeHit));
   const res = await geocode.run(['search', 'oslo', 's', '--limit', '3'], { fetchImpl });
   assert.match(fetchImpl.calls[0].url, /autocomplete\?q=oslo\+s&limit=3/);
+  assert.deepEqual(res.meta, { subcommand: 'search', count: 1, limit: 3 });
   assert.deepEqual(res.data, [
     { id: 'NSR:StopPlace:337', label: 'Oslo S, Oslo', layer: 'stopPlace', lat: 59.9109, lon: 10.7522 },
   ]);
@@ -28,15 +33,49 @@ test('geocode search builds autocompleteV3 URL and shapes results', async () => 
 });
 
 test('geocode reverse requires --lat and --lon', async () => {
+  const fetchImpl = fakeFetch();
   await assert.rejects(
-    geocode.run(['reverse', '--lon', '10.75'], { fetchImpl: fakeFetch() }),
+    geocode.run(['reverse', '--lon', '10.75'], { fetchImpl }),
     (err) => err instanceof UsageError && err.message === '--lat is required',
   );
+  assert.equal(fetchImpl.calls.length, 0);
 });
 
-test('geocode rejects unknown subcommand and unknown flags', async () => {
-  await assert.rejects(geocode.run(['frobnicate'], {}), UsageError);
-  await assert.rejects(geocode.run(['search', 'oslo', '--bogus'], {}), UsageError);
+test('geocode rejects unknown input and reverse positionals before fetch', async () => {
+  const fetchImpl = fakeFetch();
+  await assert.rejects(geocode.run(['frobnicate'], { fetchImpl }), UsageError);
+  await assert.rejects(geocode.run(['search', 'oslo', '--bogus'], { fetchImpl }), UsageError);
+  await assert.rejects(
+    geocode.run(['reverse', 'extra', '--lat', '59.9', '--lon', '10.7'], { fetchImpl }),
+    (err) => err instanceof UsageError && err.code === 'unexpected_argument',
+  );
+  assert.equal(fetchImpl.calls.length, 0);
+});
+
+test('geocode applies current v3 layers and focus radius', async () => {
+  const fetchImpl = fakeFetch(jsonRes({ features: [] }), jsonRes({ features: [] }));
+  await geocode.run([
+    'search', 'Oslo', '--lat', '59.9', '--lon', '10.7', '--radius', '25', '--layers', 'stopPlace,address',
+  ], { fetchImpl });
+  assert.match(fetchImpl.calls[0].url, /lat=59\.9&lon=10\.7&radius=25&layers=stopPlace%2Caddress/);
+
+  await geocode.run([
+    'reverse', '--lat', '59.9', '--lon', '10.7', '--layers', 'stopPlace',
+  ], { fetchImpl });
+  assert.match(fetchImpl.calls[1].url, /radius=1&limit=10&layers=stopPlace/);
+});
+
+test('geocode rejects invalid domains before fetch', async () => {
+  const fetchImpl = fakeFetch();
+  for (const args of [
+    ['search', 'Oslo', '--limit=0'],
+    ['search', 'Oslo', '--limit=1.5'],
+    ['search', 'Oslo', '--limit=101'],
+    ['search', 'Oslo', '--lat', '91', '--lon', '10'],
+    ['search', 'Oslo', '--radius', '1'],
+    ['search', 'Oslo', '--layers', 'venue'],
+  ]) await assert.rejects(geocode.run(args, { fetchImpl }), UsageError);
+  assert.equal(fetchImpl.calls.length, 0);
 });
 
 const departuresFixture = {
@@ -59,26 +98,41 @@ const departuresFixture = {
   },
 };
 
-test('departures resolves stop, queries estimatedCalls, formats delay', async () => {
+test('departures resolves only StopPlaces, queries estimatedCalls, and formats delay', async () => {
   const fetchImpl = fakeFetch(jsonRes(geocodeHit), jsonRes(departuresFixture));
   const res = await departures.run(['oslo', 's', '--limit', '5', '--modes', 'rail'], {
     fetchImpl,
     stderr: quietStderr,
   });
+  assert.match(fetchImpl.calls[0].url, /layers=stopPlace/);
   const query = JSON.parse(fetchImpl.calls[1].init.body).query;
   assert.match(query, /stopPlace\(id: "NSR:StopPlace:337"\)/);
   assert.match(query, /numberOfDepartures: 5/);
   assert.match(query, /whiteListedModes: \[rail\]/);
   assert.equal(res.data.departures[0].line, 'RE11');
   assert.equal(res.lines[0], '12:02  +2m  RE11  -> Skien  quay 3  (rail)');
+  assert.deepEqual(res.meta, { count: 1, limit: 5 });
 });
 
-test('departures with unknown stop id is a usage error', async () => {
+test('departures with unknown StopPlace id is a usage error', async () => {
   const fetchImpl = fakeFetch(jsonRes({ data: { stopPlace: null } }));
   await assert.rejects(
     departures.run(['NSR:StopPlace:999999'], { fetchImpl, stderr: quietStderr }),
-    (err) => err instanceof UsageError && /no stop place found/.test(err.message),
+    (err) => err instanceof UsageError && err.code === 'not_found',
   );
+});
+
+test('departures validates options and explicit ID type before resolution', async () => {
+  const fetchImpl = fakeFetch();
+  for (const args of [
+    ['Oslo', '--limit=-1'],
+    ['Oslo', '--limit=1.5'],
+    ['Oslo', '--modes', 'banana'],
+    ['Oslo', '--time', '2026-02-29T08:00:00+01:00'],
+    ['Oslo', '--time', '2026-07-27T08:00:00'],
+    ['NSR:GroupOfStopPlaces:1'],
+  ]) await assert.rejects(departures.run(args, { fetchImpl, stderr: quietStderr }), UsageError);
+  assert.equal(fetchImpl.calls.length, 0);
 });
 
 const tripFixture = {
@@ -107,7 +161,7 @@ const tripFixture = {
   },
 };
 
-test('trip plans between two NSR ids with time and modes', async () => {
+test('trip plans between two NSR ids with validated time and modes', async () => {
   const fetchImpl = fakeFetch(jsonRes(tripFixture));
   const res = await trip.run(
     ['NSR:StopPlace:337', 'NSR:StopPlace:548', '--time', '2026-07-27T08:00:00+02:00', '--modes', 'rail'],
@@ -118,16 +172,22 @@ test('trip plans between two NSR ids with time and modes', async () => {
   assert.match(query, /dateTime: "2026-07-27T08:00:00\+02:00"/);
   assert.match(query, /modes: \{ transportModes: \[\{ transportMode: rail \}\] \}/);
   assert.equal(res.data.tripPatterns[0].legs[0].line, 'F4');
+  assert.deepEqual(res.meta, { count: 1, limit: 3 });
   assert.equal(res.lines[0], '1) 08:02 -> 10:35  (2h33m)');
   assert.equal(res.lines[1], '   08:02-10:35  rail F4: Oslo S -> Bergen stasjon');
 });
 
-test('trip requires exactly two endpoints and a valid --time', async () => {
-  await assert.rejects(trip.run(['Oslo'], {}), /exactly <from> and <to>/);
-  await assert.rejects(
-    trip.run(['NSR:StopPlace:1', 'NSR:StopPlace:2', '--time', 'tomorrow'], {}),
-    /--time must be ISO 8601/,
-  );
+test('trip validates arity and options before geocoding', async () => {
+  const fetchImpl = fakeFetch();
+  await assert.rejects(trip.run(['Oslo'], { fetchImpl }), /exactly <from> and <to>/);
+  for (const args of [
+    ['Oslo', 'Bergen', '--time', 'tomorrow'],
+    ['Oslo', 'Bergen', '--time', '2026-07-27T08:00:00'],
+    ['Oslo', 'Bergen', '--modes', 'banana'],
+    ['Oslo', 'Bergen', '--limit=0'],
+    ['Oslo', 'Bergen', '--limit=1.5'],
+  ]) await assert.rejects(trip.run(args, { fetchImpl, stderr: quietStderr }), UsageError);
+  assert.equal(fetchImpl.calls.length, 0);
 });
 
 const vehiclesFixture = {
@@ -159,18 +219,38 @@ const vehiclesFixture = {
   },
 };
 
-test('vehicles requires a filter, applies --limit client-side', async () => {
+test('vehicles reports client-side truncation in human and machine metadata', async () => {
   await assert.rejects(vehicles.run([], {}), /at least one filter/);
   const fetchImpl = fakeFetch(jsonRes(vehiclesFixture));
-  const res = await vehicles.run(['--codespace', 'RUT', '--limit', '1'], { fetchImpl });
+  const res = await vehicles.run(['--codespace', 'rut', '--limit', '1'], { fetchImpl });
   const query = JSON.parse(fetchImpl.calls[0].init.body).query;
   assert.match(query, /vehicles\(codespaceId: "RUT"\)/);
   assert.equal(res.data.length, 1);
+  assert.deepEqual(res.meta, {
+    count: 1,
+    totalCount: 2,
+    limit: 1,
+    hasMore: true,
+    truncated: true,
+  });
   assert.match(res.lines.at(-1), /1 more; raise --limit/);
+  assert.match(res.lines[0], /many seats available/);
+  assert.match(res.lines[0], /@12:00\+02:00/);
 });
 
-test('vehicles validates --bbox shape', async () => {
-  await assert.rejects(vehicles.run(['--bbox', '1,2,3'], {}), /--bbox must be/);
+test('vehicles rejects positionals and invalid domains before fetch', async () => {
+  const fetchImpl = fakeFetch();
+  for (const args of [
+    ['extra', '--mode', 'bus'],
+    ['--mode', 'bus', '--limit=-1'],
+    ['--mode', 'bus', '--limit=1.5'],
+    ['--mode', 'bus', '--limit=101'],
+    ['--mode', 'water'],
+    ['--bbox', '1,2,3'],
+    ['--bbox', '3,2,1,4'],
+    ['--bbox', '1,181,3,182'],
+  ]) await assert.rejects(vehicles.run(args, { fetchImpl }), UsageError);
+  assert.equal(fetchImpl.calls.length, 0);
 });
 
 const mobilityVehiclesFixture = {
@@ -206,19 +286,88 @@ test('mobility vehicles queries by coordinate with form factor', async () => {
   });
   assert.equal(res.data[0].system, 'Voi Oslo');
   assert.equal(res.data[0].fuelPercent, 80);
+  assert.deepEqual(res.meta, { subcommand: 'vehicles', count: 1, limit: 20, rangeMeters: 500 });
   assert.match(res.lines[0], /scooter {2}Voi Oslo/);
   assert.match(res.lines[0], /80%/);
 });
 
-test('mobility requires subcommand and coordinates', async () => {
-  await assert.rejects(mobility.run(['nearby'], {}), /vehicles or stations/);
-  await assert.rejects(mobility.run(['vehicles', '--lat', '59.9'], {}), /--lon is required/);
+test('mobility stations applies --form-factor to availableFormFactors', async () => {
+  const fixture = {
+    data: {
+      stations: [{
+        id: 'YOS:Station:1',
+        name: { translation: [{ language: 'nb', value: 'Stasjonen' }] },
+        lat: 59.91,
+        lon: 10.75,
+        numVehiclesAvailable: 2,
+        vehicleTypesAvailable: [{ count: 2, vehicleType: { formFactor: 'BICYCLE' } }],
+        system: { name: { translation: [{ language: 'nb', value: 'Oslo Bysykkel' }] } },
+      }],
+    },
+  };
+  const fetchImpl = fakeFetch(jsonRes(fixture));
+  const res = await mobility.run([
+    'stations', '--lat', '59.91', '--lon', '10.75', '--form-factor', 'bicycle', '--limit', '1',
+  ], { fetchImpl });
+  const body = JSON.parse(fetchImpl.calls[0].init.body);
+  assert.deepEqual(body.variables.formFactors, ['BICYCLE']);
+  assert.match(body.query, /availableFormFactors: \$formFactors/);
+  assert.equal(res.data[0].available, 2);
+  assert.deepEqual(res.meta, { subcommand: 'stations', count: 1, limit: 1, rangeMeters: 500 });
 });
 
-test('every command returns its help text with --help and makes no requests', async () => {
+test('mobility rejects extra args and invalid domains before fetch', async () => {
+  const fetchImpl = fakeFetch();
+  for (const args of [
+    ['nearby'],
+    ['vehicles', 'extra', '--lat', '59.9', '--lon', '10.7'],
+    ['vehicles', '--lat', '59.9'],
+    ['vehicles', '--lat', '91', '--lon', '10.7'],
+    ['vehicles', '--lat', '59.9', '--lon', '181'],
+    ['vehicles', '--lat', '59.9', '--lon', '10.7', '--range=0'],
+    ['vehicles', '--lat', '59.9', '--lon', '10.7', '--range=2001'],
+    ['vehicles', '--lat', '59.9', '--lon', '10.7', '--limit=1.5'],
+    ['vehicles', '--lat', '59.9', '--lon', '10.7', '--form-factor', 'banana'],
+  ]) await assert.rejects(mobility.run(args, { fetchImpl }), UsageError);
+  assert.equal(fetchImpl.calls.length, 0);
+});
+
+test('commands map malformed endpoint payloads to ApiError', async () => {
+  await assert.rejects(
+    geocode.run(['search', 'Oslo'], { fetchImpl: fakeFetch(jsonRes({})) }),
+    (err) => err instanceof ApiError && err.code === 'invalid_response',
+  );
+  await assert.rejects(
+    departures.run(['NSR:StopPlace:1'], {
+      fetchImpl: fakeFetch(jsonRes({ data: { stopPlace: { id: 'NSR:StopPlace:1', name: 'x', estimatedCalls: {} } } })),
+    }),
+    (err) => err instanceof ApiError && err.code === 'invalid_response',
+  );
+  await assert.rejects(
+    trip.run(['NSR:StopPlace:1', 'NSR:StopPlace:2'], {
+      fetchImpl: fakeFetch(jsonRes({ data: { trip: { tripPatterns: {} } } })),
+    }),
+    (err) => err instanceof ApiError && err.code === 'invalid_response',
+  );
+  await assert.rejects(
+    vehicles.run(['--mode', 'bus'], { fetchImpl: fakeFetch(jsonRes({ data: { vehicles: {} } })) }),
+    (err) => err instanceof ApiError && err.code === 'invalid_response',
+  );
+  await assert.rejects(
+    mobility.run(['vehicles', '--lat', '59.9', '--lon', '10.7'], {
+      fetchImpl: fakeFetch(jsonRes({ data: { vehicles: {} } })),
+    }),
+    (err) => err instanceof ApiError && err.code === 'invalid_response',
+  );
+});
+
+test('every command returns focused help without requests', async () => {
   for (const mod of [geocode, departures, trip, vehicles, mobility]) {
     const res = await mod.run(['--help'], { fetchImpl: fakeFetch() });
     assert.match(res.lines[0], /^Usage: entur /);
     assert.match(res.lines[0], /Example/);
+    assert.match(res.lines[0], /--json/);
+    assert.match(res.lines[0], /--timeout/);
+    assert.match(res.lines[0], /--client-name/);
   }
 });

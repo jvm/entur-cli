@@ -1,25 +1,37 @@
-import { UsageError } from '../errors.js';
+import { ApiError, UsageError } from '../errors.js';
 import { ENDPOINTS, graphql } from '../http.js';
-import { globalOptions, gqlEnum, gqlId, gqlTime, httpOpts, num, parse } from '../cli.js';
+import {
+  JOURNEY_MODES,
+  csvOf,
+  exactPositionals,
+  globalHelp,
+  globalOptions,
+  gqlString,
+  gqlTime,
+  httpOpts,
+  int,
+  parse,
+} from '../cli.js';
 import { dur, hhmm } from '../format.js';
 import { resolvePlace } from '../resolve.js';
 
 export const help = `Usage: entur trip <from> <to> [options]
 
 Plan a door-to-door journey (Entur Journey Planner v3).
-<from>/<to> are NSR IDs or free text (quote multi-word names); free text is
+<from>/<to> are Entur IDs or free text; quote multi-word names. Free text is
 resolved via the geocoder and the chosen places are reported on stderr.
 
 Options:
-  --time <iso>      depart at this time (ISO 8601; default now)
+  --time <iso>      depart at an offset-aware ISO 8601 time (default now)
   --arrive-by       treat --time as latest arrival instead of departure
-  --modes <a,b>     only these transport modes, e.g. bus,rail,metro
-  --limit <n>       max trip alternatives (default 3)
-  --json            JSON output
-  -h, --help        this help
+  --modes <a,b>     transit modes: air,bus,cableway,water,funicular,lift,rail,
+                    metro,taxi,tram,trolleybus,monorail,coach,unknown
+  --limit <n>       max trip alternatives (default 3, max 50)
+${globalHelp}
 
-Example:
-  entur trip "Oslo S" "Bergen stasjon" --time 2026-07-27T08:00:00+02:00`;
+Examples:
+  entur trip "Oslo S" "Bergen stasjon" --limit 1
+  entur trip NSR:StopPlace:59872 NSR:StopPlace:59983 --time 2026-07-27T08:00:00+02:00 --json`;
 
 const options = {
   ...globalOptions,
@@ -30,9 +42,20 @@ const options = {
 };
 
 function placeArg(place) {
-  if (/^NSR:/.test(place.id ?? '')) return `{ place: "${gqlId(place.id, 'place')}" }`;
-  if (place.lat === undefined || place.lon === undefined) {
-    throw new UsageError(`cannot use '${place.name}' as a trip endpoint (no NSR ID or coordinates)`);
+  if (/^NSR:/.test(place.id ?? '')) return `{ place: ${gqlString(place.id, 'place')} }`;
+  if (
+    !Number.isFinite(place.lat)
+    || place.lat < -90
+    || place.lat > 90
+    || !Number.isFinite(place.lon)
+    || place.lon < -180
+    || place.lon > 180
+  ) {
+    throw new UsageError(`cannot use '${place.name}' as a trip endpoint (no routable ID or coordinates)`, {
+      code: 'invalid_argument',
+      field: 'place',
+      hint: 'Use free text, an NSR ID, or a place returned by geocode search.',
+    });
   }
   return `{ coordinates: { latitude: ${place.lat}, longitude: ${place.lon} } }`;
 }
@@ -40,23 +63,31 @@ function placeArg(place) {
 export async function run(argv, opts = {}) {
   const { values, positionals } = parse(argv, options);
   if (values.help) return { lines: [help] };
-  if (positionals.length !== 2) {
-    throw new UsageError('trip needs exactly <from> and <to>; quote multi-word names, e.g.: entur trip "Oslo S" "Bergen stasjon"');
-  }
-  const http = httpOpts(values, opts.fetchImpl);
-  http.stderr = opts.stderr;
+  exactPositionals(
+    positionals,
+    2,
+    'trip needs exactly <from> and <to>; quote multi-word names, e.g.: entur trip "Oslo S" "Bergen stasjon"',
+  );
 
-  const [from, to] = [await resolvePlace(positionals[0], http), await resolvePlace(positionals[1], http)];
+  // Validate every local option before spending geocoder/API quota.
+  const limit = int(values, 'limit', { min: 1, max: 50 });
+  const time = values.time === undefined ? undefined : gqlTime(values.time);
+  const modes = csvOf(values.modes, 'modes', JOURNEY_MODES);
+  const http = httpOpts(values, opts);
+
+  const [from, to] = await Promise.all([
+    resolvePlace(positionals[0], { ...http, stderr: opts.stderr, what: 'from' }),
+    resolvePlace(positionals[1], { ...http, stderr: opts.stderr, what: 'to' }),
+  ]);
   const args = [
     `from: ${placeArg(from)}`,
     `to: ${placeArg(to)}`,
-    `numTripPatterns: ${num(values, 'limit')}`,
+    `numTripPatterns: ${limit}`,
   ];
-  if (values.time) args.push(`dateTime: "${gqlTime(values.time)}"`);
+  if (time) args.push(`dateTime: ${gqlString(time, 'time')}`);
   if (values['arrive-by']) args.push('arriveBy: true');
-  if (values.modes) {
-    const modes = values.modes.split(',').map((m) => `{ transportMode: ${gqlEnum(m.trim(), 'mode')} }`);
-    args.push(`modes: { transportModes: [${modes.join(', ')}] }`);
+  if (modes) {
+    args.push(`modes: { transportModes: [${modes.map((mode) => `{ transportMode: ${mode} }`).join(', ')}] }`);
   }
   const query = `{
     trip(${args.join(', ')}) {
@@ -74,33 +105,50 @@ export async function run(argv, opts = {}) {
   }`;
 
   const res = await graphql(ENDPOINTS.journeyPlanner, query, undefined, http);
+  if (!Array.isArray(res.trip?.tripPatterns)) throw invalidResponse();
   const data = {
     from: { id: from.id, name: from.name },
     to: { id: to.id, name: to.name },
-    tripPatterns: (res.trip?.tripPatterns ?? []).map((p) => ({
-      start: p.expectedStartTime,
-      end: p.expectedEndTime,
-      duration: p.duration,
-      legs: (p.legs ?? []).map((l) => ({
-        mode: l.mode,
-        line: l.line?.publicCode ?? null,
-        from: l.fromPlace?.name ?? '',
-        to: l.toPlace?.name ?? '',
-        start: l.expectedStartTime,
-        end: l.expectedEndTime,
-        distance: l.distance,
-        duration: l.duration,
-      })),
-    })),
+    tripPatterns: res.trip.tripPatterns.map((pattern) => {
+      if (!Array.isArray(pattern?.legs)) throw invalidResponse();
+      return {
+        start: pattern.expectedStartTime ?? null,
+        end: pattern.expectedEndTime ?? null,
+        duration: pattern.duration ?? null,
+        legs: pattern.legs.map((leg) => ({
+          mode: leg?.mode ?? '',
+          line: leg?.line?.publicCode ?? null,
+          from: leg?.fromPlace?.name ?? '',
+          to: leg?.toPlace?.name ?? '',
+          start: leg?.expectedStartTime ?? null,
+          end: leg?.expectedEndTime ?? null,
+          distance: leg?.distance ?? null,
+          duration: leg?.duration ?? null,
+        })),
+      };
+    }),
   };
   const lines = [];
-  data.tripPatterns.forEach((p, i) => {
-    lines.push(`${i + 1}) ${hhmm(p.start)} -> ${hhmm(p.end)}  (${dur(p.duration)})`);
-    for (const l of p.legs) {
-      const via = l.line ? `${l.mode} ${l.line}` : l.mode;
-      lines.push(`   ${hhmm(l.start)}-${hhmm(l.end)}  ${via}: ${l.from} -> ${l.to}`);
+  data.tripPatterns.forEach((pattern, index) => {
+    lines.push(`${index + 1}) ${hhmm(pattern.start)} -> ${hhmm(pattern.end)}  (${dur(pattern.duration)})`);
+    for (const leg of pattern.legs) {
+      const via = leg.line ? `${leg.mode} ${leg.line}` : leg.mode;
+      lines.push(`   ${hhmm(leg.start)}-${hhmm(leg.end)}  ${via}: ${leg.from} -> ${leg.to}`);
     }
   });
   if (!lines.length) lines.push(`no trips found from ${from.name} to ${to.name}`);
-  return { json: values.json, data, lines };
+  return {
+    json: values.json,
+    data,
+    lines,
+    meta: { count: data.tripPatterns.length, limit },
+  };
+}
+
+function invalidResponse() {
+  return new ApiError('invalid Journey Planner trip response', {
+    code: 'invalid_response',
+    retryable: true,
+    hint: 'Retry once; report the endpoint response if it persists.',
+  });
 }

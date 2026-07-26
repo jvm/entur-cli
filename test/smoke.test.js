@@ -12,22 +12,26 @@ const skip = process.env.ENTUR_SMOKE ? false : 'set ENTUR_SMOKE=1 to run live sm
 const quiet = { stderr: { write() {} } };
 
 test('geocoder search and reverse return NSR/place features', { skip }, async () => {
-  const search = await geocode.run(['search', 'Oslo S', '--limit', '1'], quiet);
+  const search = await geocode.run(['search', 'Oslo S', '--layers', 'stopPlace', '--limit', '1'], quiet);
   assert.match(search.data[0].id, /^NSR:/);
   assert.ok(search.data[0].label.includes('Oslo'));
-  const reverse = await geocode.run(['reverse', '--lat', '59.911', '--lon', '10.750'], quiet);
+  const reverse = await geocode.run(['reverse', '--lat', '59.911', '--lon', '10.750', '--layers', 'stopPlace'], quiet);
   assert.ok(reverse.data.length > 0);
 });
 
-test('journey planner serves a departure board with estimatedCalls fields', { skip }, async () => {
-  const res = await departures.run(['NSR:StopPlace:59872', '--limit', '2'], quiet);
+test('journey planner resolves free text to a StopPlace departure board', { skip }, async () => {
+  const res = await departures.run(['Oslo', '--limit', '2'], quiet);
+  assert.equal(res.data.stop.id, 'NSR:StopPlace:59872');
   assert.equal(res.data.stop.name, 'Oslo S');
   assert.ok(res.data.departures.length > 0);
   assert.ok(res.data.departures[0].time);
 });
 
 test('journey planner plans a trip with legs', { skip }, async () => {
-  const res = await trip.run(['NSR:StopPlace:59872', 'NSR:StopPlace:59983', '--limit', '1'], quiet);
+  const searchTime = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+  const res = await trip.run([
+    'NSR:StopPlace:59872', 'NSR:StopPlace:59983', '--time', searchTime, '--limit', '1',
+  ], quiet);
   assert.ok(res.data.tripPatterns.length > 0);
   assert.ok(res.data.tripPatterns[0].legs.length > 0);
 });
@@ -39,7 +43,7 @@ test('vehicle positions accepts mode and bbox filters', { skip }, async () => {
 
 test('mobility serves vehicles and stations near a coordinate', { skip }, async () => {
   const veh = await mobility.run(['vehicles', '--lat', '59.911', '--lon', '10.750'], quiet);
-  const sta = await mobility.run(['stations', '--lat', '59.911', '--lon', '10.750'], quiet);
+  const sta = await mobility.run(['stations', '--lat', '59.911', '--lon', '10.750', '--form-factor', 'bicycle'], quiet);
   assert.ok(Array.isArray(veh.data));
   assert.ok(Array.isArray(sta.data));
 });

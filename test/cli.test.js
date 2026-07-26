@@ -61,9 +61,11 @@ test('--json renders structured usage errors on stderr with clean stdout', () =>
   assert.deepEqual(JSON.parse(stderr), {
     schemaVersion: 1,
     error: {
-      code: 'usage_error',
+      code: 'missing_argument',
       message: '--lat is required',
+      field: 'lat',
       retryable: false,
+      hint: 'Pass --lat with a value.',
     },
   });
 });
@@ -72,6 +74,38 @@ test('command help exits 0 and shows an example', () => {
   const { status, stdout } = cli('trip', '--help');
   assert.equal(status, 0);
   assert.match(stdout, /entur trip "Oslo S" "Bergen stasjon"/);
+});
+
+test('machine errors are structured for unknown commands and hide internal stacks', async () => {
+  const unknown = cli('teleport', '--json');
+  assert.equal(unknown.status, 2);
+  assert.equal(unknown.stdout, '');
+  const unknownPayload = JSON.parse(unknown.stderr);
+  assert.equal(unknownPayload.error.code, 'unknown_command');
+  assert.deepEqual(unknownPayload.error.allowedValues, [
+    'geocode', 'departures', 'trip', 'vehicles', 'mobility',
+  ]);
+
+  const writes = [];
+  const commands = {
+    broken: async () => ({ run: async () => { throw new Error('private implementation path'); } }),
+  };
+  const status = await mainForTest(['broken', '--json'], commands, writes);
+  assert.equal(status, 1);
+  const payload = JSON.parse(writes[0]);
+  assert.equal(payload.error.code, 'internal_error');
+  assert.doesNotMatch(writes[0], /private implementation path/);
+});
+
+test('human result rendering neutralizes terminal control bytes', async () => {
+  const writes = [];
+  const commands = {
+    safe: async () => ({ run: async () => ({ lines: ['name\u001b[31mred'] }) }),
+  };
+  const status = await mainForTest(['safe'], commands, writes);
+  assert.equal(status, 0);
+  assert.equal(writes[0], 'name\\x1b[31mred\n');
+  assert.doesNotMatch(writes[0], /\u001b/);
 });
 
 test('large machine output drains completely before process exit', () => {
@@ -94,3 +128,9 @@ test('large machine output drains completely before process exit', () => {
   assert.equal(payload.data.length, 5000);
   assert.deepEqual(payload.meta, { command: 'fixture' });
 });
+
+async function mainForTest(args, commands, writes) {
+  const { main } = await import('../src/main.js');
+  const stream = { write: (value) => writes.push(value) };
+  return main(args, { commands, stdout: stream, stderr: stream });
+}

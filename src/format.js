@@ -3,7 +3,14 @@ export function hhmm(iso) {
   return typeof iso === 'string' ? iso.slice(11, 16) : '';
 }
 
+export function hhmmOffset(iso) {
+  if (typeof iso !== 'string') return '';
+  const match = /^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.exec(iso);
+  return match ? `${match[1]}${match[2]}` : '';
+}
+
 export function dur(seconds) {
+  if (!Number.isFinite(seconds)) return '';
   const m = Math.round(seconds / 60);
   return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m` : `${m}m`;
 }

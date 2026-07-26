@@ -1,6 +1,6 @@
 import process from 'node:process';
 import { ApiError, UsageError } from './errors.js';
-import { errorEnvelope, successEnvelope, terminalSafe } from './output.js';
+import { errorEnvelope, inlineSafe, successEnvelope, terminalSafe } from './output.js';
 import { CLI_VERSION, SCHEMA_VERSION, SUPPORTED_SCHEMA_VERSIONS } from './version.js';
 
 const DEFAULT_COMMANDS = Object.freeze({
@@ -89,7 +89,7 @@ export async function main(
     if (result.json) {
       writeResult(stdout, successEnvelope(result.data, { command: cmd, ...(result.meta ?? {}) }));
     } else if (result.lines?.length) {
-      writeResult(stdout, result.lines.join('\n'));
+      writeResult(stdout, terminalSafe(result.lines.join('\n')));
     }
     return 0;
   } catch (err) {
@@ -109,8 +109,10 @@ function writeResult(stream, value) {
 
 function humanError(err, cmd) {
   if (err instanceof UsageError) {
-    const hint = err.hint ?? (cmd && !cmd.startsWith('-') ? `Run 'entur ${cmd} --help' for usage.` : undefined);
-    return [`Error: ${terminalSafe(err.message)}`, hint].filter(Boolean).join('\n');
+    const commandHint = cmd && !cmd.startsWith('-') ? `Run 'entur ${cmd} --help' for usage.` : undefined;
+    return [`Error: ${terminalSafe(err.message)}`, err.hint, commandHint]
+      .filter((item, index, items) => item && items.indexOf(item) === index)
+      .join('\n');
   }
   if (err instanceof ApiError) {
     return [`Error: ${terminalSafe(err.message)}`, err.hint ? terminalSafe(err.hint) : ''].filter(Boolean).join('\n');
@@ -120,7 +122,7 @@ function humanError(err, cmd) {
 
 function unknownCommand(command, commands) {
   const allowedValues = Object.keys(commands);
-  return new UsageError(`unknown command '${terminalSafe(command)}'`, {
+  return new UsageError(`unknown command '${inlineSafe(command)}'`, {
     code: 'unknown_command',
     field: 'command',
     allowedValues,
@@ -129,7 +131,7 @@ function unknownCommand(command, commands) {
 }
 
 function unexpectedArguments(args) {
-  return new UsageError(`unexpected argument${args.length === 1 ? '' : 's'}: ${args.map(terminalSafe).join(', ')}`, {
+  return new UsageError(`unexpected argument${args.length === 1 ? '' : 's'}: ${args.map(inlineSafe).join(', ')}`, {
     code: 'unexpected_argument',
     field: 'arguments',
     hint: "Run 'entur --help' for the valid invocation.",

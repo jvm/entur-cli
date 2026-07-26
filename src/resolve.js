@@ -1,24 +1,75 @@
 import process from 'node:process';
-import { UsageError } from './errors.js';
+import { enturId } from './cli.js';
+import { ApiError, UsageError } from './errors.js';
 import { ENDPOINTS, request } from './http.js';
+import { inlineSafe } from './output.js';
 
-// Free text -> place via one geocoder autocomplete hit; NSR-style IDs pass through verbatim.
-// The chosen place is reported on stderr so callers can verify the resolution.
+// Free text -> one geocoder hit; Entur IDs pass through verbatim after type validation.
 export async function resolvePlace(text, opts = {}) {
-  if (/^[A-Za-z]+:[A-Za-z]+:/.test(text)) return { id: text, name: text };
-  const url = `${ENDPOINTS.geocoder}/autocomplete?${new URLSearchParams({ q: text, limit: '1' })}`;
-  const geo = await request(url, opts);
+  const {
+    layers,
+    idTypes,
+    what = 'place',
+    stderr = process.stderr,
+    ...http
+  } = opts;
+
+  if (looksLikeEnturId(text)) {
+    const id = enturId(text, what, { types: idTypes });
+    return { id, name: id };
+  }
+  if (typeof text !== 'string' || !text.trim() || text.length > 500 || /[\u0000-\u001f\u007f]/.test(text)) {
+    throw new UsageError(`${what} must be non-empty text of at most 500 characters`, {
+      code: 'invalid_argument',
+      field: what,
+    });
+  }
+
+  const params = new URLSearchParams({ q: text, limit: '1' });
+  if (layers?.length) params.set('layers', layers.join(','));
+  const url = `${ENDPOINTS.geocoder}/autocomplete?${params}`;
+  const geo = await request(url, http);
   const feature = geo.features?.[0];
   if (!feature) {
-    throw new UsageError(`no place found matching '${text}'; try: entur geocode search "${text}"`);
+    throw new UsageError(`no ${what} found matching '${text}'`, {
+      code: 'not_found',
+      field: what,
+      hint: `Try: entur geocode search "${inlineSafe(text)}" --layers ${layers?.join(',') ?? 'stopPlace'}`,
+    });
   }
-  const [lon, lat] = feature.geometry?.coordinates ?? [];
-  const { id } = feature.properties;
-  const name = placeName(feature.properties);
-  (opts.stderr ?? process.stderr).write(`resolved '${text}' -> ${id} (${name})\n`);
+
+  const properties = feature.properties;
+  const coordinates = feature.geometry?.coordinates;
+  const id = properties?.id;
+  const name = placeName(properties);
+  const [lon, lat] = Array.isArray(coordinates) ? coordinates : [];
+  if (
+    typeof id !== 'string'
+    || !name
+    || !Number.isFinite(lat)
+    || lat < -90
+    || lat > 90
+    || !Number.isFinite(lon)
+    || lon < -180
+    || lon > 180
+    || (idTypes && !idTypes.includes(id.split(':')[1]))
+  ) {
+    throw new ApiError(`invalid geocoder result for ${what}`, {
+      code: 'invalid_response',
+      retryable: true,
+      hint: 'Retry once; report the geocoder response if it persists.',
+    });
+  }
+  enturId(id, what, { types: idTypes });
+
+  stderr.write(`resolved '${inlineSafe(text)}' -> ${inlineSafe(id)} (${inlineSafe(name)})\n`);
   return { id, name, lat, lon };
 }
 
 export function placeName(properties) {
   return properties?.names?.display ?? properties?.names?.default ?? '';
+}
+
+function looksLikeEnturId(value) {
+  return typeof value === 'string' && /^[^:\s]+:[^:\s]+:/.test(value);
 }

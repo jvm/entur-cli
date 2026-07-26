@@ -49,8 +49,18 @@ export function normalizedError(err) {
 }
 
 // Keep terminal control bytes from user/API text from becoming active escapes.
+// terminalSafe preserves intentional line feeds in already-composed CLI output;
+// inlineSafe escapes every control byte in a single untrusted value.
 export function terminalSafe(value) {
-  return String(value).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, (char) =>
+  return escapeControls(value, /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g);
+}
+
+export function inlineSafe(value) {
+  return escapeControls(value, /[\u0000-\u001f\u007f-\u009f]/g);
+}
+
+function escapeControls(value, pattern) {
+  return String(value).replace(pattern, (char) =>
     `\\x${char.charCodeAt(0).toString(16).padStart(2, '0')}`,
   );
 }
