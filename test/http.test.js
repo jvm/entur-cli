@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ApiError } from '../src/errors.js';
+import http from 'node:http';
+import { ApiError, UsageError } from '../src/errors.js';
 import { clientName, graphql, request } from '../src/http.js';
 import { fakeFetch, jsonRes } from './helpers.js';
 
@@ -11,7 +12,19 @@ test('clientName precedence: explicit > env > derived from local username', () =
     assert.equal(clientName('explicit-app'), 'explicit-app');
     assert.equal(clientName(), 'acme-app');
     delete process.env.ENTUR_CLIENT_NAME;
-    assert.match(clientName(), /^[a-z0-9]+-entur-cli$/);
+    assert.match(clientName(), /^[a-z0-9_]+-entur-cli$/);
+  } finally {
+    if (saved === undefined) delete process.env.ENTUR_CLIENT_NAME;
+    else process.env.ENTUR_CLIENT_NAME = saved;
+  }
+});
+
+test('clientName rejects invalid explicit and environment values', () => {
+  const saved = process.env.ENTUR_CLIENT_NAME;
+  try {
+    assert.throws(() => clientName('Company App'), UsageError);
+    process.env.ENTUR_CLIENT_NAME = '';
+    assert.throws(() => clientName(), /lowercase company-application/);
   } finally {
     if (saved === undefined) delete process.env.ENTUR_CLIENT_NAME;
     else process.env.ENTUR_CLIENT_NAME = saved;
@@ -43,7 +56,7 @@ test('request surfaces 429 Rate-Limit-Expiry-Time and forbids blind retry', asyn
   );
 });
 
-test('request maps timeout to ApiError', async () => {
+test('request maps timeout to retryable ApiError', async () => {
   const fetchImpl = async () => {
     const err = new Error('aborted');
     err.name = 'TimeoutError';
@@ -51,7 +64,51 @@ test('request maps timeout to ApiError', async () => {
   };
   await assert.rejects(
     request('https://example.test/x', { fetchImpl, timeoutSec: 1 }),
-    (err) => err instanceof ApiError && /timed out after 1s/.test(err.message),
+    (err) => err instanceof ApiError && err.code === 'timeout' && err.retryable && /timed out after 1s/.test(err.message),
+  );
+});
+
+test('request timeout covers a response body that stalls after headers', async () => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.write('{"ok":');
+    setTimeout(() => res.end('true}'), 250);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/slow?private=query`;
+    await assert.rejects(
+      request(url, { timeoutSec: 0.02 }),
+      (err) => err instanceof ApiError
+        && err.code === 'timeout'
+        && !err.message.includes('private=query'),
+    );
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('request maps malformed successful JSON to invalid_response', async () => {
+  const fetchImpl = fakeFetch(new Response('{', { status: 200, headers: { 'content-type': 'application/json' } }));
+  await assert.rejects(
+    request('https://example.test/x?private=query', { fetchImpl }),
+    (err) => err instanceof ApiError
+      && err.code === 'invalid_response'
+      && !err.message.includes('private=query'),
+  );
+});
+
+test('request supports caller cancellation', async () => {
+  const controller = new AbortController();
+  controller.abort(new Error('stop'));
+  const fetchImpl = async (_url, { signal }) => {
+    if (signal.aborted) throw signal.reason;
+    throw new Error('expected an aborted signal');
+  };
+  await assert.rejects(
+    request('https://example.test/x', { fetchImpl, signal: controller.signal }),
+    (err) => err instanceof ApiError && err.code === 'cancelled' && !err.retryable,
   );
 });
 
@@ -65,5 +122,21 @@ test('graphql posts query/variables and raises on errors[]', async () => {
   await assert.rejects(
     graphql('https://example.test/gql', 'query { b }', undefined, { fetchImpl }),
     /bad field/,
+  );
+});
+
+test('graphql rejects null or missing data payloads as invalid responses', async () => {
+  const fetchImpl = fakeFetch(jsonRes(null), jsonRes({}), jsonRes({ errors: {} }));
+  await assert.rejects(
+    graphql('https://example.test/gql', 'query { a }', undefined, { fetchImpl }),
+    (err) => err instanceof ApiError && err.code === 'invalid_response',
+  );
+  await assert.rejects(
+    graphql('https://example.test/gql', 'query { a }', undefined, { fetchImpl }),
+    (err) => err instanceof ApiError && err.code === 'invalid_response',
+  );
+  await assert.rejects(
+    graphql('https://example.test/gql', 'query { a }', undefined, { fetchImpl }),
+    (err) => err instanceof ApiError && err.code === 'invalid_response',
   );
 });
