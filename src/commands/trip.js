@@ -18,7 +18,7 @@ import { resolvePlace } from '../resolve.js';
 export const help = `Usage: entur trip <from> <to> [options]
 
 Plan a door-to-door journey (Entur Journey Planner v3).
-<from>/<to> are Entur IDs or free text; quote multi-word names. Free text is
+<from>/<to> are NSR IDs or free text; quote multi-word names. Free text is
 resolved via the geocoder and the chosen places are reported on stderr.
 
 Options:
