@@ -280,9 +280,9 @@ const departuresFixture = {
   },
 };
 
-test('departures resolves only StopPlaces, queries estimatedCalls, and formats delay', async () => {
+test('departures resolves only StopPlaces, queries estimatedCalls with current filters, and formats delay', async () => {
   const fetchImpl = fakeFetch(jsonRes(geocodeHit), jsonRes(departuresFixture));
-  const res = await departures.run(['oslo', 's', '--limit', '5', '--modes', 'rail'], {
+  const res = await departures.run(['oslo', 's', '--limit', '5', '--modes', 'rail,bus'], {
     fetchImpl,
     stderr: quietStderr,
   });
@@ -290,7 +290,8 @@ test('departures resolves only StopPlaces, queries estimatedCalls, and formats d
   const query = JSON.parse(fetchImpl.calls[1].init.body).query;
   assert.match(query, /stopPlace\(id: "NSR:StopPlace:337"\)/);
   assert.match(query, /numberOfDepartures: 5/);
-  assert.match(query, /whiteListedModes: \[rail\]/);
+  assert.match(query, /filters: \[\{ select: \[\{ transportModes: \[\{ transportMode: rail \}, \{ transportMode: bus \}\] \}\] \}\]/);
+  assert.doesNotMatch(query, /whiteListedModes/);
   assert.equal(res.data.departures[0].line, 'RE11');
   assert.equal(res.lines[0], '12:02  +2m  RE11  -> Skien  quay 3  (rail)');
   assert.deepEqual(res.meta, { count: 1, limit: 5 });
@@ -472,7 +473,7 @@ const mobilityVehiclesFixture = {
         isReserved: false,
         currentRangeMeters: 12000,
         currentFuelPercent: 0.8,
-        vehicleType: { formFactor: 'SCOOTER', propulsionType: 'ELECTRIC' },
+        vehicleType: { formFactor: 'SCOOTER_STANDING', propulsionType: 'ELECTRIC' },
         system: { name: { translation: [{ language: 'nb', value: 'Voi Oslo' }] } },
       },
     ],
@@ -482,7 +483,7 @@ const mobilityVehiclesFixture = {
 test('mobility vehicles queries by coordinate with form factor', async () => {
   const fetchImpl = fakeFetch(jsonRes(mobilityVehiclesFixture));
   const res = await mobility.run(
-    ['vehicles', '--lat', '59.911', '--lon', '10.750', '--form-factor', 'scooter'],
+    ['vehicles', '--lat', '59.911', '--lon', '10.750', '--form-factor', 'scooter_standing'],
     { fetchImpl },
   );
   const body = JSON.parse(fetchImpl.calls[0].init.body);
@@ -491,12 +492,12 @@ test('mobility vehicles queries by coordinate with form factor', async () => {
     lon: 10.75,
     range: 500,
     count: 20,
-    formFactors: ['SCOOTER'],
+    formFactors: ['SCOOTER_STANDING'],
   });
   assert.equal(res.data[0].system, 'Voi Oslo');
   assert.equal(res.data[0].fuelPercent, 80);
   assert.deepEqual(res.meta, { subcommand: 'vehicles', count: 1, limit: 20, rangeMeters: 500 });
-  assert.match(res.lines[0], /scooter {2}Voi Oslo/);
+  assert.match(res.lines[0], /scooter_standing {2}Voi Oslo/);
   assert.match(res.lines[0], /80%/);
 });
 
@@ -536,6 +537,7 @@ test('mobility rejects extra args and invalid domains before fetch', async () =>
     ['vehicles', '--lat', '59.9', '--lon', '10.7', '--range=0'],
     ['vehicles', '--lat', '59.9', '--lon', '10.7', '--range=2001'],
     ['vehicles', '--lat', '59.9', '--lon', '10.7', '--limit=1.5'],
+    ['vehicles', '--lat', '59.9', '--lon', '10.7', '--form-factor', 'scooter'],
     ['vehicles', '--lat', '59.9', '--lon', '10.7', '--form-factor', 'banana'],
   ]) await assert.rejects(mobility.run(args, { fetchImpl }), UsageError);
   assert.equal(fetchImpl.calls.length, 0);
@@ -647,8 +649,8 @@ test('all leaf-help examples parse and execute against fixtures', async () => {
     },
     {
       mod: mobility,
-      example: 'entur mobility vehicles --lat 59.911 --lon 10.750 --form-factor scooter --limit 5',
-      args: ['vehicles', '--lat', '59.911', '--lon', '10.750', '--form-factor', 'scooter', '--limit', '5'],
+      example: 'entur mobility vehicles --lat 59.911 --lon 10.750 --form-factor scooter_standing --limit 5',
+      args: ['vehicles', '--lat', '59.911', '--lon', '10.750', '--form-factor', 'scooter_standing', '--limit', '5'],
       responses: [jsonRes({ data: { vehicles: [] } })],
     },
     {

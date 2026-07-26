@@ -19,7 +19,7 @@ entur geocode place NSR:StopPlace:59872 --json
 entur departures "Oslo" --limit 5 --modes rail
 entur trip "Oslo S" "Bergen stasjon" --limit 1
 entur vehicles --codespace ATB --mode bus --limit 5
-entur mobility vehicles --lat 59.911 --lon 10.750 --form-factor scooter
+entur mobility vehicles --lat 59.911 --lon 10.750 --form-factor scooter_standing
 entur mobility stations --lat 59.911 --lon 10.750 --form-factor bicycle
 ```
 

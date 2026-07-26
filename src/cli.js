@@ -48,7 +48,6 @@ export const MOBILITY_FORM_FACTORS = Object.freeze([
   'cargo_bicycle',
   'car',
   'moped',
-  'scooter',
   'scooter_standing',
   'scooter_seated',
   'other',

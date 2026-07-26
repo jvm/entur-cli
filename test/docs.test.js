@@ -21,10 +21,12 @@ test('package, CLI, and documented machine-contract versions agree', async () =>
   assert.match(HELP, /--version/);
 });
 
-test('help and README document the complete current Geocoder v3 surface', async () => {
+test('help and README document current API surfaces', async () => {
   const readme = await readFile(new URL('README.md', root), 'utf8');
   const docs = [HELP, readme, geocode.help, departures.help, trip.help, vehicles.help, mobility.help].join('\n');
   assert.doesNotMatch(docs, /--layers venue/);
+  assert.doesNotMatch(docs, /--form-factor scooter(?:\s|$)/);
+  assert.match(docs, /--form-factor scooter_standing/);
   assert.doesNotMatch(geocode.help, /reverse search radius \(default 1\)/);
   assert.match(HELP, /search, reverse, place/);
   for (const value of [

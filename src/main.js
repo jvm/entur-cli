@@ -27,7 +27,7 @@ Examples:
   entur departures "Oslo S" --limit 5 --modes rail
   entur trip "Oslo S" "Bergen stasjon" --limit 1
   entur vehicles --codespace ATB --mode bus --limit 5
-  entur mobility vehicles --lat 59.911 --lon 10.750 --form-factor scooter
+  entur mobility vehicles --lat 59.911 --lon 10.750 --form-factor scooter_standing
 
 Global options (all commands):
   --json                 schema-v1 JSON result on stdout; structured errors on stderr

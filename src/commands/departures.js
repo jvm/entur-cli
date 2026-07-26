@@ -64,7 +64,10 @@ export async function run(argv, opts = {}) {
 
   const args = [`numberOfDepartures: ${limit}`];
   if (time) args.push(`startTime: ${gqlString(time, 'time')}`);
-  if (modes) args.push(`whiteListedModes: [${modes.join(', ')}]`);
+  if (modes) {
+    const transportModes = modes.map((mode) => `{ transportMode: ${mode} }`).join(', ');
+    args.push(`filters: [{ select: [{ transportModes: [${transportModes}] }] }]`);
+  }
   const query = `{
     stopPlace(id: ${gqlString(stop.id, 'stop')}) {
       id name

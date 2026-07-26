@@ -23,13 +23,13 @@ Subcommands:
 Options:
   --lat <n> --lon <n>    center coordinate (required)
   --range <m>            search radius in meters (default 500, max 2000)
-  --form-factor <f>      bicycle,cargo_bicycle,car,moped,scooter,
-                         scooter_standing,scooter_seated,other
+  --form-factor <f>      bicycle,cargo_bicycle,car,moped,scooter_standing,
+                         scooter_seated,other
   --limit <n>            max results (default 20, max 50)
 ${globalHelp}
 
 Examples:
-  entur mobility vehicles --lat 59.911 --lon 10.750 --form-factor scooter --limit 5
+  entur mobility vehicles --lat 59.911 --lon 10.750 --form-factor scooter_standing --limit 5
   entur mobility stations --lat 59.911 --lon 10.750 --form-factor bicycle --json`;
 
 const options = {

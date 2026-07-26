@@ -44,7 +44,7 @@ test('all Geocoder v3 endpoints and filter-only search return complete features'
 });
 
 test('journey planner resolves free text to a StopPlace departure board', { skip }, async () => {
-  const res = await departures.run(['Oslo', '--limit', '2'], quiet);
+  const res = await departures.run(['Oslo', '--limit', '2', '--modes', 'rail'], quiet);
   assert.equal(res.data.stop.id, 'NSR:StopPlace:59872');
   assert.equal(res.data.stop.name, 'Oslo S');
   assert.ok(res.data.departures.length > 0);
@@ -66,7 +66,9 @@ test('vehicle positions accepts mode and bbox filters', { skip }, async () => {
 });
 
 test('mobility serves vehicles and stations near a coordinate', { skip }, async () => {
-  const veh = await mobility.run(['vehicles', '--lat', '59.911', '--lon', '10.750'], quiet);
+  const veh = await mobility.run([
+    'vehicles', '--lat', '59.911', '--lon', '10.750', '--form-factor', 'scooter_standing',
+  ], quiet);
   const sta = await mobility.run(['stations', '--lat', '59.911', '--lon', '10.750', '--form-factor', 'bicycle'], quiet);
   assert.ok(Array.isArray(veh.data));
   assert.ok(Array.isArray(sta.data));
