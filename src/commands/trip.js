@@ -31,7 +31,7 @@ ${globalHelp}
 
 Examples:
   entur trip "Oslo S" "Bergen stasjon" --limit 1
-  entur trip NSR:StopPlace:59872 NSR:StopPlace:59983 --time 2026-07-27T08:00:00+02:00 --json`;
+  entur trip NSR:StopPlace:59872 NSR:StopPlace:59983 --modes rail --limit 1 --json`;
 
 const options = {
   ...globalOptions,

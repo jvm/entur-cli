@@ -29,7 +29,7 @@ ${globalHelp}
 
 Examples:
   entur departures "Oslo S" --limit 5 --modes rail
-  entur departures NSR:StopPlace:59872 --time 2026-07-27T08:00:00+02:00 --json`;
+  entur departures NSR:StopPlace:59872 --limit 5 --json`;
 
 const options = {
   ...globalOptions,

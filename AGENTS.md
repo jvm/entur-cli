@@ -4,13 +4,14 @@
 
 `entur-cli` is an ESM Node.js CLI for accessing Entur public-transport APIs. Intentionally minimal: no command framework, runtime dependencies, build step, or CI. Layout:
 
-- `bin/entur.js` — command routing, root help, error-to-exit-code mapping (0 ok, 1 API/network, 2 usage)
-- `src/http.js` — the single HTTP path: `ET-Client-Name`, timeouts, 429/error mapping, endpoints, `graphql()` helper
+- `bin/entur.js` — executable shim; delegates to `src/main.js` and sets `process.exitCode`
+- `src/main.js` — command routing, root help/version, schema-v1 rendering, error-to-exit-code mapping (0 ok, 1 API/network, 2 usage)
+- `src/http.js` — the single HTTP path: `ET-Client-Name`, timeout/cancellation, 429/error mapping, response validation, endpoints, `graphql()` helper
 - `src/cli.js` — `parseArgs` wrappers, numeric/ID/enum/time validators for values embedded in GraphQL queries
 - `src/resolve.js` — free text → place via geocoder autocomplete; Entur IDs pass through verbatim
 - `src/commands/*.js` — one module per command; `src/errors.js`, `src/format.js` — shared error types and time/duration formatting
 
-Command contract: each command module exports `help` (usage string ending in one runnable example) and `run(argv, { fetchImpl, stderr }) → { json, data, lines }`. `bin/entur.js` prints `data` as JSON when `--json`, otherwise `lines`; commands never print to stdout themselves. Throw `UsageError` (exit 2) or `ApiError` (exit 1). Tests inject `fetchImpl`; keep the `data` schema stable.
+Command contract: each command module exports `help` (focused usage with runnable examples) and `run(argv, { fetchImpl, stderr, signal }) → { json, data, lines, meta? }`. `src/main.js` wraps machine success as `{ schemaVersion, data, meta }`; commands never print to stdout themselves. Machine errors are structured JSON on stderr. Throw `UsageError` (exit 2) or `ApiError` (exit 1). Tests inject `fetchImpl`; keep schema-v1 fields and semantics stable.
 
 Requirements:
 
@@ -59,7 +60,7 @@ Core documentation:
 
 ## Implementation Conventions
 
-- Keep `bin/entur.js` thin: argument parsing and process exit behavior belong at CLI boundary; reusable API and formatting logic belongs under `src/` when introduced.
+- Keep `bin/entur.js` as a thin executable shim. Routing, rendering, and exit-code selection live at the `src/main.js` CLI boundary; reusable API and formatting logic lives elsewhere under `src/`.
 - Use Node 20 built-ins, including native `fetch`, before adding dependencies. Add a package only when it removes meaningful complexity; verify its current API and commit resulting `package-lock.json`.
 - Centralize HTTP behavior rather than duplicating headers, error mapping, authentication, and retry logic across commands.
 - Default human-readable output goes to stdout. Diagnostics go to stderr. Return nonzero exit status for invalid input, network failures, and API failures.

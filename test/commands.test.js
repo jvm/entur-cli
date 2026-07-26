@@ -371,3 +371,75 @@ test('every command returns focused help without requests', async () => {
     assert.match(res.lines[0], /--client-name/);
   }
 });
+
+test('all leaf-help examples parse and execute against fixtures', async () => {
+  const emptyTrip = { data: { trip: { tripPatterns: [] } } };
+  const emptyStop = { data: { stopPlace: { id: 'NSR:StopPlace:59872', name: 'Oslo S', estimatedCalls: [] } } };
+  const cases = [
+    {
+      mod: geocode,
+      example: 'entur geocode search "Oslo S" --layers stopPlace --limit 3',
+      args: ['search', 'Oslo S', '--layers', 'stopPlace', '--limit', '3'],
+      responses: [jsonRes({ features: [] })],
+    },
+    {
+      mod: geocode,
+      example: 'entur geocode reverse --lat 59.911 --lon 10.750 --radius 0.5 --layers stopPlace',
+      args: ['reverse', '--lat', '59.911', '--lon', '10.750', '--radius', '0.5', '--layers', 'stopPlace'],
+      responses: [jsonRes({ features: [] })],
+    },
+    {
+      mod: departures,
+      example: 'entur departures "Oslo S" --limit 5 --modes rail',
+      args: ['Oslo S', '--limit', '5', '--modes', 'rail'],
+      responses: [jsonRes(geocodeHit), jsonRes(emptyStop)],
+    },
+    {
+      mod: departures,
+      example: 'entur departures NSR:StopPlace:59872 --limit 5 --json',
+      args: ['NSR:StopPlace:59872', '--limit', '5', '--json'],
+      responses: [jsonRes(emptyStop)],
+    },
+    {
+      mod: trip,
+      example: 'entur trip "Oslo S" "Bergen stasjon" --limit 1',
+      args: ['Oslo S', 'Bergen stasjon', '--limit', '1'],
+      responses: [jsonRes(geocodeHit), jsonRes(geocodeHit), jsonRes(emptyTrip)],
+    },
+    {
+      mod: trip,
+      example: 'entur trip NSR:StopPlace:59872 NSR:StopPlace:59983 --modes rail --limit 1 --json',
+      args: ['NSR:StopPlace:59872', 'NSR:StopPlace:59983', '--modes', 'rail', '--limit', '1', '--json'],
+      responses: [jsonRes(emptyTrip)],
+    },
+    {
+      mod: vehicles,
+      example: 'entur vehicles --codespace ATB --mode bus --limit 5',
+      args: ['--codespace', 'ATB', '--mode', 'bus', '--limit', '5'],
+      responses: [jsonRes({ data: { vehicles: [] } })],
+    },
+    {
+      mod: vehicles,
+      example: 'entur vehicles --bbox 59.8,10.5,60.0,10.9 --limit 20 --json',
+      args: ['--bbox', '59.8,10.5,60.0,10.9', '--limit', '20', '--json'],
+      responses: [jsonRes({ data: { vehicles: [] } })],
+    },
+    {
+      mod: mobility,
+      example: 'entur mobility vehicles --lat 59.911 --lon 10.750 --form-factor scooter --limit 5',
+      args: ['vehicles', '--lat', '59.911', '--lon', '10.750', '--form-factor', 'scooter', '--limit', '5'],
+      responses: [jsonRes({ data: { vehicles: [] } })],
+    },
+    {
+      mod: mobility,
+      example: 'entur mobility stations --lat 59.911 --lon 10.750 --form-factor bicycle --json',
+      args: ['stations', '--lat', '59.911', '--lon', '10.750', '--form-factor', 'bicycle', '--json'],
+      responses: [jsonRes({ data: { stations: [] } })],
+    },
+  ];
+
+  for (const item of cases) {
+    assert.ok(item.mod.help.includes(item.example), `missing help example: ${item.example}`);
+    await item.mod.run(item.args, { fetchImpl: fakeFetch(...item.responses), stderr: quietStderr });
+  }
+});
