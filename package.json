@@ -1,0 +1,16 @@
+{
+  "name": "entur-cli",
+  "version": "0.1.0",
+  "description": "A command-line interface for the Entur APIs",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "entur": "bin/entur.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
