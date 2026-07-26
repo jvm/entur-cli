@@ -75,10 +75,8 @@ export async function run(argv, opts = {}) {
   const modes = csvOf(values.modes, 'modes', JOURNEY_MODES);
   const http = httpOpts(values, opts);
 
-  const [from, to] = await Promise.all([
-    resolvePlace(positionals[0], { ...http, stderr: opts.stderr, what: 'from' }),
-    resolvePlace(positionals[1], { ...http, stderr: opts.stderr, what: 'to' }),
-  ]);
+  const from = await resolvePlace(positionals[0], { ...http, stderr: opts.stderr, what: 'from' });
+  const to = await resolvePlace(positionals[1], { ...http, stderr: opts.stderr, what: 'to' });
   const args = [
     `from: ${placeArg(from)}`,
     `to: ${placeArg(to)}`,

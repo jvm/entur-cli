@@ -177,6 +177,33 @@ test('trip plans between two NSR ids with validated time and modes', async () =>
   assert.equal(res.lines[1], '   08:02-10:35  rail F4: Oslo S -> Bergen stasjon');
 });
 
+test('trip resolves from and to deterministically in argument order', async () => {
+  const bergenHit = {
+    features: [{
+      geometry: { coordinates: [5.334, 60.389] },
+      properties: {
+        id: 'NSR:StopPlace:59983',
+        names: { display: 'Bergen stasjon, Bergen' },
+        layer: 'stopPlace',
+      },
+    }],
+  };
+  const fetchImpl = fakeFetch(
+    jsonRes(geocodeHit),
+    jsonRes(bergenHit),
+    jsonRes({ data: { trip: { tripPatterns: [] } } }),
+  );
+  const messages = [];
+  await trip.run(['Oslo S', 'Bergen stasjon', '--limit', '1'], {
+    fetchImpl,
+    stderr: { write: (message) => messages.push(message) },
+  });
+  assert.match(fetchImpl.calls[0].url, /q=Oslo\+S/);
+  assert.match(fetchImpl.calls[1].url, /q=Bergen\+stasjon/);
+  assert.match(messages[0], /Oslo S/);
+  assert.match(messages[1], /Bergen stasjon/);
+});
+
 test('trip validates arity and options before geocoding', async () => {
   const fetchImpl = fakeFetch();
   await assert.rejects(trip.run(['Oslo'], { fetchImpl }), /exactly <from> and <to>/);
