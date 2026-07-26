@@ -1,8 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ApiError } from '../src/errors.js';
-import { graphql, request } from '../src/http.js';
+import { clientName, graphql, request } from '../src/http.js';
 import { fakeFetch, jsonRes } from './helpers.js';
+
+test('clientName precedence: explicit > env > derived from local username', () => {
+  const saved = process.env.ENTUR_CLIENT_NAME;
+  try {
+    process.env.ENTUR_CLIENT_NAME = 'acme-app';
+    assert.equal(clientName('explicit-app'), 'explicit-app');
+    assert.equal(clientName(), 'acme-app');
+    delete process.env.ENTUR_CLIENT_NAME;
+    assert.match(clientName(), /^[a-z0-9]+-entur-cli$/);
+  } finally {
+    if (saved === undefined) delete process.env.ENTUR_CLIENT_NAME;
+    else process.env.ENTUR_CLIENT_NAME = saved;
+  }
+});
 
 test('request returns parsed JSON and sends ET-Client-Name', async () => {
   const fetchImpl = fakeFetch(jsonRes({ ok: true }));

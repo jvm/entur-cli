@@ -1,3 +1,4 @@
+import os from 'node:os';
 import process from 'node:process';
 import { ApiError } from './errors.js';
 
@@ -8,8 +9,12 @@ export const ENDPOINTS = {
   mobility: 'https://api.entur.io/mobility/v2/graphql',
 };
 
+// Default identifies the local user per Entur's honor-system quota model
+// (per-name buckets); the -entur-cli suffix keeps traffic attributable to
+// this tool. Never auto-generate unique names — that's quota evasion.
 export function clientName(explicit) {
-  return explicit ?? process.env.ENTUR_CLIENT_NAME ?? 'jvm-entur-cli';
+  const user = os.userInfo().username.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'local';
+  return explicit ?? process.env.ENTUR_CLIENT_NAME ?? `${user}-entur-cli`;
 }
 
 // Single HTTP path for every Entur call: headers, timeout, error mapping.

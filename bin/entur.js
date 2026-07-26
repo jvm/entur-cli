@@ -31,7 +31,7 @@ Examples:
 Global options (all commands):
   --json                 machine-readable JSON on stdout (schema stable; diagnostics on stderr)
   --timeout <sec>        request timeout in seconds (default 15)
-  --client-name <name>   ET-Client-Name header; also via ENTUR_CLIENT_NAME env (default jvm-entur-cli)
+  --client-name <name>   ET-Client-Name header; also via ENTUR_CLIENT_NAME env (default <username>-entur-cli)
   -h, --help             help for a command
 
 Run 'entur <command> --help' for options and an example. Exit codes: 0 ok, 1 API/network error, 2 usage error.`;
