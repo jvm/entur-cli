@@ -38,11 +38,26 @@ test('request returns parsed JSON and sends ET-Client-Name', async () => {
   assert.equal(fetchImpl.calls[0].init.headers['ET-Client-Name'], 'test-app');
 });
 
-test('request maps non-2xx to ApiError with status', async () => {
-  const fetchImpl = fakeFetch(jsonRes({ message: 'nope' }, { status: 500 }));
+test('request maps non-2xx without exposing response or URL secrets', async () => {
+  const secret = 'conspicuously-fake-secret';
+  const fetchImpl = fakeFetch(jsonRes({ message: secret }, { status: 500 }));
+  await assert.rejects(
+    request(`https://example.test/x?token=${secret}`, { fetchImpl }),
+    (err) => err instanceof ApiError
+      && err.status === 500
+      && /HTTP 500/.test(err.message)
+      && !err.message.includes(secret),
+  );
+});
+
+test('request does not expose a network implementation error', async () => {
+  const secret = 'conspicuously-fake-secret';
+  const fetchImpl = async () => { throw new Error(secret); };
   await assert.rejects(
     request('https://example.test/x', { fetchImpl }),
-    (err) => err instanceof ApiError && err.status === 500 && /HTTP 500/.test(err.message),
+    (err) => err instanceof ApiError
+      && err.code === 'network_error'
+      && !err.message.includes(secret),
   );
 });
 

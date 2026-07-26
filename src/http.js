@@ -58,6 +58,7 @@ export async function request(url, opts = {}) {
     });
 
     if (res.status === 429) {
+      await discardBody(res);
       const expiry = res.headers.get('Rate-Limit-Expiry-Time') ?? undefined;
       throw new ApiError(
         `rate limited (HTTP 429) by ${endpoint}${expiry ? `; do not retry before ${expiry}` : ''}`,
@@ -73,15 +74,10 @@ export async function request(url, opts = {}) {
     }
 
     if (!res.ok) {
-      let detail = '';
-      try {
-        detail = (await res.text()).slice(0, 300).replace(/[\r\n]+/g, ' ');
-      } catch (err) {
-        if (abort.timedOut()) throw err;
-        // A status-only error remains actionable when the body is unavailable.
-      }
+      // Error bodies can reflect private request values; never copy them into diagnostics.
+      await discardBody(res);
       const retryable = res.status === 408 || res.status >= 500;
-      throw new ApiError(`HTTP ${res.status} from ${endpoint}${detail ? `: ${detail}` : ''}`, {
+      throw new ApiError(`HTTP ${res.status} from ${endpoint}`, {
         code: 'http_error',
         status: res.status,
         url: endpoint,
@@ -133,7 +129,7 @@ export async function request(url, opts = {}) {
         retryable: false,
       });
     }
-    throw new ApiError(`network error contacting ${endpoint}: ${err?.message ?? 'unknown failure'}`, {
+    throw new ApiError(`network error contacting ${endpoint}`, {
       code: 'network_error',
       url: endpoint,
       retryable: true,
@@ -204,6 +200,14 @@ function requestAbort(timeoutSec, externalSignal) {
       externalSignal?.removeEventListener('abort', onExternalAbort);
     },
   };
+}
+
+async function discardBody(res) {
+  try {
+    await res.body?.cancel();
+  } catch {
+    // Status and headers remain sufficient when cancellation is unavailable.
+  }
 }
 
 function invalidGraphqlResponse(url) {
