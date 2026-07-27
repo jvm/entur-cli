@@ -118,7 +118,17 @@ The value must use lowercase `company-application` form with no spaces. The deri
 ## Development
 
 ```sh
-npm test                  # deterministic tests; no Entur network calls
-ENTUR_SMOKE=1 npm test    # opt-in live schema checks
+npm install              # install dependencies (wires lefthook hooks)
+npm test                 # deterministic tests; no Entur network calls
+npm run smoke            # ENTUR_SMOKE=1 — opt-in live schema checks
+npm run validate         # npm test && npm audit
+npm run verify-pack      # npm pack --dry-run — inspect published contents
+npm run security:local   # audit + betterleaks + shellcheck + actionlint
 node bin/entur.js --help
 ```
+
+## Security
+
+GitHub Actions runs security and quality gates on every pull request and push to `main`: betterleaks secret scanning, GitHub CodeQL SAST, `npm audit --omit=dev`, ShellCheck, and actionlint + zizmor workflow auditing. OpenSSF Scorecard reports supply-chain posture on `main`, Dependabot opens weekly update PRs, and releases on `v*` tags publish to npm with provenance. See [`SECURITY.md`](SECURITY.md) for the vulnerability reporting policy and [`AGENTS.md`](AGENTS.md) for the full workflow inventory.
+
+All workflows pin actions by SHA, request the minimum permissions needed, and disable credential persistence at checkout. Run the local equivalents before pushing with `npm run security:local`; lefthook additionally runs betterleaks on pre-commit and `npm run validate` on pre-push.

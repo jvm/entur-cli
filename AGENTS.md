@@ -2,7 +2,7 @@
 
 ## Project
 
-`entur-cli` is an ESM Node.js CLI for accessing Entur public-transport APIs. Intentionally minimal: no command framework, runtime dependencies, build step, or CI. Layout:
+`entur-cli` is an ESM Node.js CLI for accessing Entur public-transport APIs. Intentionally minimal: no command framework, no runtime dependencies, no build step. Quality and security gates run in GitHub Actions CI (`.github/workflows/`) and locally via lefthook (`.lefthook.yml`); see `SECURITY.md`. Layout:
 
 - `bin/entur.js` — executable shim; delegates to `src/main.js` and sets `process.exitCode`
 - `src/main.js` — command routing, root help/version, schema-v1 rendering, error-to-exit-code mapping (0 ok, 1 API/network, 2 usage)
@@ -10,6 +10,9 @@
 - `src/cli.js` — `parseArgs` wrappers, numeric/ID/enum/time validators for values embedded in GraphQL queries
 - `src/resolve.js` — free text → place via geocoder autocomplete; Entur IDs pass through verbatim
 - `src/commands/*.js` — one module per command; `src/errors.js`, `src/format.js` — shared error types and time/duration formatting
+- `scripts/dev-security.sh` — local wrappers for shellcheck/actionlint (skip gracefully when the tool is missing)
+- `.github/workflows/` — CI, security, CodeQL, Scorecard, release, and live-smoke workflows
+- `.lefthook.yml`, `.betterleaks.toml`, `SECURITY.md` — local hooks, secret-scan config, and vulnerability policy
 
 Command contract: each command module exports `help` (focused usage with runnable examples) and `run(argv, { fetchImpl, stderr, signal }) → { json, data, lines, meta? }`. `src/main.js` wraps machine success as `{ schemaVersion, data, meta }`; commands never print to stdout themselves. Machine errors are structured JSON on stderr. Throw `UsageError` (exit 2) or `ApiError` (exit 1). Tests inject `fetchImpl`; keep schema-v1 fields and semantics stable.
 
@@ -22,13 +25,18 @@ Requirements:
 ## Commands
 
 ```sh
-npm install             # install dependencies
-npm test                # run all tests with Node's test runner
+npm install             # install dependencies (wires lefthook hooks via postinstall)
+npm test                # deterministic tests; no Entur network calls
+npm run smoke           # ENTUR_SMOKE=1 npm test — live schema checks
+npm run validate        # npm test && npm audit
+npm run audit           # npm audit --omit=dev --audit-level=high
+npm run verify-pack     # npm pack --dry-run — inspect published contents
+npm run security:local  # audit + betterleaks + shellcheck + actionlint
 node bin/entur.js        # run CLI directly during development
 npm link                # optional: expose local `entur` executable
 ```
 
-There is currently no build, lint, format, coverage, release, or deploy command. Do not document or rely on one unless its tooling is added to `package.json`.
+There is no build, lint, format, or coverage command and none should be added. Releases are automated via `.github/workflows/release.yml` on `v*` tags; do not hand-publish.
 
 ## Source of Truth for Entur APIs
 
@@ -82,9 +90,12 @@ Use built-in `node:test` and `node:assert/strict`. Name tests `*.test.js` and pl
 Before finishing a change, run:
 
 ```sh
-npm test
-node bin/entur.js --help   # once help behavior exists
+npm run validate        # npm test && npm audit
+npm run security:local  # betterleaks + shellcheck + actionlint + audit
+node bin/entur.js --help
 ```
+
+After changing any query or endpoint, also run `npm run smoke` against the live API.
 
 Also run focused tests during development:
 
@@ -92,6 +103,23 @@ Also run focused tests during development:
 node --test test/path/to/file.test.js
 node --test --test-name-pattern='pattern'
 ```
+
+## CI and Security
+
+CI runs on every pull request and push to `main` (`.github/workflows/`):
+
+- `ci.yml` — `npm test` on Node 20 and 22, production dependency audit, package-contents verification.
+- `security.yml` — betterleaks secret scan (SARIF uploaded to code scanning), `npm audit --omit=dev`, ShellCheck, and actionlint + zizmor workflow auditing. Reusable as `workflow_call`, so `release.yml` gates publishing on it.
+- `codeql.yml` — GitHub CodeQL SAST (`security-extended,security-and-quality`).
+- `scorecard.yml` — OpenSSF Scorecard supply-chain posture on `main` and schedule (not a PR gate).
+- `release.yml` — on `v*` tags, gates on Security then publishes to npm with provenance (OIDC trusted publishing; configure the trusted publisher on npmjs.com) and creates a GitHub release.
+- `live-smoke.yml` — manual `workflow_dispatch` that runs `npm run smoke` against the live Entur open APIs.
+
+All workflows pin actions by SHA with version comments, set `permissions: contents: read` by default and escalate per job, pass `persist-credentials: false`, and bound `timeout-minutes`.
+
+Local equivalents (run before pushing): `npm run security:local`. Lefthook (`.lefthook.yml`) runs betterleaks on pre-commit and `npm run validate` on pre-push; install hooks with `npx lefthook install` (run automatically via the `postinstall` script). betterleaks is an external binary — install it separately for local secret scanning; the pre-commit hook skips gracefully if it is absent.
+
+Dependabot opens weekly update PRs for npm and GitHub Actions. `package.json` `files` allowlists only `bin` and `src` for publication; never add test fixtures, workflow files, or secrets to `files`.
 
 ## Secrets and Configuration
 
@@ -105,4 +133,6 @@ node --test --test-name-pattern='pattern'
 - Keep changes scoped and avoid speculative abstractions while CLI surface is unsettled.
 - Update `README.md` and `--help` together when commands, options, environment variables, defaults, or output formats change.
 - Keep `package.json` `bin.entur` valid and preserve executable shebang in `bin/entur.js`.
-- Run `npm test` before committing. Use imperative commit subjects.
+- Run `npm run validate` before committing. Use imperative commit subjects.
+- Keep `package.json` `files` allowlist limited to runtime assets (`bin`, `src`); never ship tests, workflows, or secrets.
+- Keep GitHub Actions workflows and `.lefthook.yml` in sync with `package.json` scripts; pin actions by SHA with version comments.
