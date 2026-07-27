@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  # Reuse the Security workflow (secret scan, audit, workflow lint, shellcheck)
+  # as a gate before publishing anything.
+  security:
+    uses: ./.github/workflows/security.yml
+
+  release:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Verify package contents
+        run: npm run verify-pack
+
+      - name: Pack
+        run: npm pack
+
+      - name: Compute checksums
+        run: shasum -a 256 -- ./*.tgz > checksums.txt
+
+      # npm trusted publishing uses GitHub OIDC via `permissions: id-token: write`.
+      # Configure npmjs.com Trusted Publisher for this package with:
+      #   owner/repo: jvm/entur-cli
+      #   workflow filename: release.yml
+      # No NODE_AUTH_TOKEN is set on purpose.
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        with:
+          files: |
+            *.tgz
+            checksums.txt

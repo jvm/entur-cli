@@ -1,0 +1,121 @@
+name: Security
+
+# Reusable (workflow_call) so the Release workflow can gate publishing on it.
+on:
+  workflow_call:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "37 4 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Create temporary package-lock for npm audit (if absent)
+        run: |
+          if [ ! -f package-lock.json ]; then
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          fi
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  secrets:
+    name: Secret scan (betterleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install betterleaks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BETTERLEAKS_VERSION=1.5.0
+          curl -sSfL \
+            "https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}/betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz" \
+            -o /tmp/betterleaks.tar.gz
+          tar -xzf /tmp/betterleaks.tar.gz -C /tmp betterleaks
+          sudo install -m 0755 /tmp/betterleaks /usr/local/bin/betterleaks
+          betterleaks --version
+      - name: Run betterleaks (working tree)
+        run: |
+          betterleaks dir . \
+            --no-banner --redact --exit-code=2 \
+            --report-path betterleaks.sarif \
+            --report-format sarif
+      - name: Upload betterleaks SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
+        with:
+          sarif_file: betterleaks.sarif
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Run ShellCheck when shell scripts are present
+        run: |
+          mapfile -t scripts < <(find . -type f -name '*.sh' \
+            -not -path './node_modules/*' \
+            -not -path './.git/*' \
+            -not -path './dist/*')
+          if [ "${#scripts[@]}" -eq 0 ]; then
+            echo "No shell scripts found; skipping."
+          else
+            shellcheck "${scripts[@]}"
+          fi
+
+  workflow-lint:
+    name: Workflow lint (actionlint + zizmor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+      - name: Install zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo zizmorcore/zizmor \
+            --pattern 'zizmor-x86_64-unknown-linux-gnu.tar.gz' \
+            --output /tmp/zizmor.tar.gz
+          tar xzf /tmp/zizmor.tar.gz -C /usr/local/bin zizmor
+          chmod +x /usr/local/bin/zizmor
+      - name: Run zizmor
+        run: |
+          zizmor --color always \
+                 --persona auditor \
+                 --min-severity high \
+                 --min-confidence medium \
+                 .github/workflows/

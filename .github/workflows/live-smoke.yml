@@ -1,0 +1,41 @@
+name: Live Smoke
+
+# Manual only: exercises the real Entur open APIs (geocoder, journey planner,
+# vehicles, mobility) to catch upstream schema drift. Costs ET-Client-Name
+# quota, so it is never run on push/PR/schedule.
+#
+# The current smoke suite targets open APIs and needs no secrets. When partner
+# (OAuth) commands are added, wire their credentials here as repository
+# secrets and pass them as `env:` on the smoke step.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Smoke test
+        run: npm run smoke
+        env:
+          ENTUR_SMOKE: "1"
+          # Honest, attributable identity for CI traffic (company-application).
+          ENTUR_CLIENT_NAME: jvm-entur-ci-smoke
