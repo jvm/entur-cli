@@ -3,3 +3,9 @@ dist/
 coverage/
 .env
 .DS_Store
+
+# Local build / scan artifacts
+*.tgz
+checksums.txt
+betterleaks.sarif
+scorecard-results.sarif

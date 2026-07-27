@@ -1,0 +1,32 @@
+# lefthook runs locally to enforce the same checks CI runs, but staged to the
+# developer's working tree. CI is still the source of truth; this is a fast
+# feedback loop.
+#
+# Install once after cloning:
+#   npm install                       # brings the lefthook binary
+#   npx lefthook install              # wires .git/hooks
+#
+# betterleaks is an external binary; install it separately (see README). The
+# pre-commit hook skips secret scanning gracefully if it is missing.
+
+min_version: 2.1.0
+
+pre-commit:
+  parallel: true
+  commands:
+    secrets:
+      # Fail the commit if any staged file contains a secret. Skips gracefully
+      # only when betterleaks is not installed (never masks a real finding).
+      run: >
+        if command -v betterleaks >/dev/null 2>&1; then
+          betterleaks git . --pre-commit --staged --no-banner --redact --exit-code=2;
+        else
+          echo "betterleaks not installed; skipping secret scan";
+        fi
+
+pre-push:
+  parallel: false
+  commands:
+    validate:
+      # The full fast gate: unit tests + production dependency audit.
+      run: npm run validate

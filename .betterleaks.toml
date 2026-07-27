@@ -1,0 +1,14 @@
+# betterleaks config (gitleaks-compatible).
+#
+# entur-cli embeds Entur identifiers (e.g. NSR:StopPlace:337) and GraphQL query
+# text in source. These are not secrets. Skip build artifacts, dependency
+# trees, coverage, and the VCS directory to avoid false positives and speed up
+# scans.
+
+[allowlist]
+paths = [
+  '''node_modules/.*''',
+  '''\.git/.*''',
+  '''dist/.*''',
+  '''coverage/.*''',
+]

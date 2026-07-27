@@ -7,10 +7,29 @@
   "bin": {
     "entur": "bin/entur.js"
   },
+  "files": [
+    "bin",
+    "src"
+  ],
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "smoke": "ENTUR_SMOKE=1 node --test test/*.test.js",
+    "audit": "npm audit --omit=dev --audit-level=high",
+    "verify-pack": "npm pack --dry-run",
+    "validate": "npm test && npm run audit",
+    "security:secrets": "betterleaks dir . --no-banner --redact --exit-code=2",
+    "security:scripts": "bash scripts/dev-security.sh scripts",
+    "security:workflows": "bash scripts/dev-security.sh workflows",
+    "security:local": "npm run audit && npm run security:secrets && npm run security:scripts && npm run security:workflows",
+    "postinstall": "lefthook install || true"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "lefthook": "^2.1.10"
+  },
+  "allowScripts": {
+    "lefthook@2.1.10": true
   }
 }
