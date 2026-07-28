@@ -7,13 +7,29 @@
     "type": "git",
     "url": "git+https://github.com/jvm/entur-cli.git"
   },
+  "homepage": "https://github.com/jvm/entur-cli#readme",
+  "bugs": {
+    "url": "https://github.com/jvm/entur-cli/issues"
+  },
+  "author": "Jose Mocito",
+  "keywords": [
+    "entur",
+    "cli",
+    "norway",
+    "public-transport",
+    "transit",
+    "journey-planner",
+    "geocoder",
+    "mobility"
+  ],
   "type": "module",
   "bin": {
     "entur": "bin/entur.js"
   },
   "files": [
     "bin",
-    "src"
+    "src",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "test": "node --test test/*.test.js",

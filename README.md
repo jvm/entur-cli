@@ -5,9 +5,17 @@ CLI for [Entur's open APIs](https://developer.entur.no/): Norwegian public trans
 ## Install
 
 ```sh
-npm install
-npm link        # exposes `entur`
+npm install -g entur-cli
+entur --version
 ```
+
+Or run it once without installing:
+
+```sh
+npx entur-cli geocode search "Oslo S"
+```
+
+For local development, see [Contributing](CONTRIBUTING.md).
 
 ## Commands
 
