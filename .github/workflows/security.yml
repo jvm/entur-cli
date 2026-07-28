@@ -119,3 +119,28 @@ jobs:
                  --min-severity high \
                  --min-confidence medium \
                  .github/workflows/
+
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install Semgrep
+        # Pinned for reproducible scans. OSS community ruleset, no account needed.
+        run: python3 -m pip install --user semgrep==1.171.0
+      - name: Run Semgrep and emit SARIF
+        # Non-blocking: findings upload to the Security tab for triage instead
+        # of failing the job. Enforce later via a code-scanning required check.
+        run: semgrep scan --config p/default --sarif --output semgrep.sarif
+      - name: Upload Semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
+        with:
+          sarif_file: semgrep.sarif
