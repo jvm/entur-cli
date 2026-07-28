@@ -41,7 +41,8 @@ jobs:
 
       - name: Upgrade npm for trusted publishing
         # Trusted publishing (OIDC) requires npm >= 11.5.1; Node 22 bundles npm 10.
-        run: npm install -g npm@latest
+        # Pinned (not npm@latest) so tagged releases stay reproducible.
+        run: npm install -g npm@11.18.0
 
       - name: Test
         run: npm test
