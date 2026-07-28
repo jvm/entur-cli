@@ -9,8 +9,11 @@
 - `src/http.js` — the single HTTP path: `ET-Client-Name`, timeout/cancellation, 429/error mapping, response validation, endpoints, `graphql()` helper
 - `src/cli.js` — `parseArgs` wrappers, numeric/ID/enum/time validators for values embedded in GraphQL queries
 - `src/resolve.js` — free text → place via geocoder autocomplete; Entur IDs pass through verbatim
+- `src/geocoder.js` — geocoder v3 request building, response parsing, and feature mapping
+- `src/output.js` — structured JSON writers and human-readable tabular formatters
+- `src/version.js` — CLI and schema version constants
 - `src/commands/*.js` — one module per command; `src/errors.js`, `src/format.js` — shared error types and time/duration formatting
-- `scripts/dev-security.sh` — local wrappers for shellcheck/actionlint (skip gracefully when the tool is missing)
+- `scripts/dev-security.sh` — local wrappers for betterleaks/shellcheck/actionlint (skip gracefully when the tool is missing)
 - `.github/workflows/` — CI, security, CodeQL, Scorecard, release, and live-smoke workflows
 - `.lefthook.yml`, `.betterleaks.toml`, `SECURITY.md` — local hooks, secret-scan config, and vulnerability policy
 
@@ -46,7 +49,7 @@ Entur documentation changes independently of this repository. Before implementin
 2. Read endpoint-specific documentation linked from that index; confirm URL, method, parameters, response schema, authentication, environment, deprecations, and rate-limit behavior.
 3. Prefer current API versions. Do not add new use of deprecated APIs such as Geocoder v1/v2 when v3 supports the use case.
 4. Record API assumptions in tests. Never infer endpoint contracts from command names or stale examples.
-5. The docs have drifted from the live API before: they implied geocoder paths `autocompleteV3`/`reverseV3` with a `size` parameter, but the live v3 endpoints are `/v3/autocomplete`, `/v3/reverse`, `/v3/place` with `limit`, and feature properties carry `names.display`/`names.default`, not `label`. Verify new endpoint contracts against the live API (`ENTUR_SMOKE=1 npm test`).
+5. The docs have drifted from the live API before: they implied geocoder paths `autocompleteV3`/`reverseV3` with a `size` parameter, but the live v3 endpoints are `/v3/autocomplete`, `/v3/reverse`, `/v3/place` with `limit`, and feature properties carry `names.display`/`names.default`, not `label`. Verify new endpoint contracts against the live API (`npm run smoke`).
 6. Not every operator publishes to every API — e.g. RUT (Ruter) is absent from Vehicle Positions; query `{ codespaces { codespaceId } }` for the current list before assuming a filter is broken.
 
 Core documentation:
@@ -84,7 +87,7 @@ Use built-in `node:test` and `node:assert/strict`. Name tests `*.test.js` and pl
 - Test CLI behavior through spawned processes when exit codes, stdout, or stderr matter.
 - Unit tests must not call live Entur services. Inject or mock `fetch` and use fixtures for REST/GraphQL responses, errors, rate-limit headers, and malformed payloads.
 - Cover success, invalid input, non-2xx responses, timeout/cancellation, and secret redaction for request code.
-- Live smoke tests live in `test/smoke.test.js` and are skipped unless `ENTUR_SMOKE=1` is set. They verify schema assumptions (paths, parameters, field names) against the real APIs — run them after changing any query or endpoint: `ENTUR_SMOKE=1 npm test`.
+- Live smoke tests live in `test/smoke.test.js` and are skipped unless `ENTUR_SMOKE=1` is set. They verify schema assumptions (paths, parameters, field names) against the real APIs — run them after changing any query or endpoint: `npm run smoke`.
 - `npm test` runs `test/*.test.js`; shared fixtures/helpers in `test/` must not use the `.test.js` suffix.
 
 Before finishing a change, run:
@@ -109,7 +112,7 @@ node --test --test-name-pattern='pattern'
 CI runs on every pull request and push to `main` (`.github/workflows/`):
 
 - `ci.yml` — `npm test` on Node 20 and 22, production dependency audit, package-contents verification.
-- `security.yml` — betterleaks secret scan (SARIF uploaded to code scanning), `npm audit --omit=dev`, ShellCheck, and actionlint + zizmor workflow auditing. Reusable as `workflow_call`, so `release.yml` gates publishing on it.
+- `security.yml` — betterleaks secret scan (SARIF uploaded to code scanning), Semgrep SAST (`p/default`, SARIF to code scanning), `npm audit --omit=dev`, ShellCheck, and actionlint + zizmor workflow auditing. Reusable as `workflow_call`, so `release.yml` gates publishing on it.
 - `codeql.yml` — GitHub CodeQL SAST (`security-extended,security-and-quality`).
 - `scorecard.yml` — OpenSSF Scorecard supply-chain posture on `main` and schedule (not a PR gate).
 - `release.yml` — on `v*` tags, gates on Security then publishes to npm with provenance (OIDC trusted publishing; configure the trusted publisher on npmjs.com) and creates a GitHub release.
@@ -117,9 +120,9 @@ CI runs on every pull request and push to `main` (`.github/workflows/`):
 
 All workflows pin actions by SHA with version comments, set `permissions: contents: read` by default and escalate per job, pass `persist-credentials: false`, and bound `timeout-minutes`.
 
-Local equivalents (run before pushing): `npm run security:local`. Lefthook (`.lefthook.yml`) runs betterleaks on pre-commit and `npm run validate` on pre-push; install hooks with `npx lefthook install` (run automatically via the `postinstall` script). betterleaks is an external binary — install it separately for local secret scanning; the pre-commit hook skips gracefully if it is absent.
+Local equivalents (run before pushing): `npm run security:local`. Lefthook (`.lefthook.yml`) runs betterleaks on pre-commit and `npm run validate` on pre-push; install hooks with `npx lefthook install` (run automatically via the `postinstall` script). betterleaks is an external binary — install it separately for local secret scanning; the pre-commit hook and `npm run security:local` skip gracefully if it is absent (CI enforces it regardless).
 
-Dependabot opens weekly update PRs for npm and GitHub Actions. `package.json` `files` allowlists only `bin` and `src` for publication; never add test fixtures, workflow files, or secrets to `files`.
+Dependabot opens weekly update PRs for npm and GitHub Actions. `package.json` `files` allowlists only `bin`, `src`, and `CHANGELOG.md` for publication; never add test fixtures, workflow files, or secrets to `files`.
 
 ## Secrets and Configuration
 
@@ -134,5 +137,5 @@ Dependabot opens weekly update PRs for npm and GitHub Actions. `package.json` `f
 - Update `README.md` and `--help` together when commands, options, environment variables, defaults, or output formats change.
 - Keep `package.json` `bin.entur` valid and preserve executable shebang in `bin/entur.js`.
 - Run `npm run validate` before committing. Use imperative commit subjects.
-- Keep `package.json` `files` allowlist limited to runtime assets (`bin`, `src`); never ship tests, workflows, or secrets.
+- Keep `package.json` `files` allowlist limited to `bin`, `src`, and `CHANGELOG.md`; never ship tests, workflows, or secrets.
 - Keep GitHub Actions workflows and `.lefthook.yml` in sync with `package.json` scripts; pin actions by SHA with version comments.

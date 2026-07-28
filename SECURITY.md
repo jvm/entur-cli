@@ -27,6 +27,7 @@ Security fixes are provided for the latest released version.
 GitHub Actions runs these checks on every pull request and push to `main`:
 
 - betterleaks secret scanning (SARIF uploaded to code scanning);
+- Semgrep SAST (`p/default`, SARIF to code scanning);
 - GitHub CodeQL static analysis (`security-extended,security-and-quality`);
 - `npm audit --omit=dev` for production dependency advisories;
 - ShellCheck for shell scripts;

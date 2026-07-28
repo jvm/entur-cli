@@ -10,9 +10,11 @@ Requirements:
 - Node.js 20 or newer
 - npm
 
-Install and verify:
+Clone and set up:
 
 ```sh
+git clone https://github.com/jvm/entur-cli.git
+cd entur-cli
 npm install              # installs dev dependencies and wires lefthook hooks
 npm test                 # deterministic tests; no Entur network calls
 npm run validate         # npm test && npm audit
