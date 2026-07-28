@@ -5,9 +5,17 @@ CLI for [Entur's open APIs](https://developer.entur.no/): Norwegian public trans
 ## Install
 
 ```sh
-npm install
-npm link        # exposes `entur`
+npm install -g entur-cli
+entur --version
 ```
+
+Or run it once without installing:
+
+```sh
+npx entur-cli geocode search "Oslo S"
+```
+
+For local development, see [Contributing](https://github.com/jvm/entur-cli/blob/main/CONTRIBUTING.md).
 
 ## Commands
 
@@ -129,6 +137,6 @@ node bin/entur.js --help
 
 ## Security
 
-GitHub Actions runs security and quality gates on every pull request and push to `main`: betterleaks secret scanning, GitHub CodeQL SAST, `npm audit --omit=dev`, ShellCheck, and actionlint + zizmor workflow auditing. OpenSSF Scorecard reports supply-chain posture on `main`, Dependabot opens weekly update PRs, and releases on `v*` tags publish to npm with provenance. See [`SECURITY.md`](SECURITY.md) for the vulnerability reporting policy and [`AGENTS.md`](AGENTS.md) for the full workflow inventory.
+GitHub Actions runs security and quality gates on every pull request and push to `main`: betterleaks secret scanning, Semgrep SAST (SARIF), GitHub CodeQL SAST, `npm audit --omit=dev`, ShellCheck, and actionlint + zizmor workflow auditing. OpenSSF Scorecard reports supply-chain posture on `main`, Dependabot opens weekly update PRs, and releases on `v*` tags publish to npm with provenance. See [`SECURITY.md`](https://github.com/jvm/entur-cli/blob/main/SECURITY.md) for the vulnerability reporting policy and [`AGENTS.md`](https://github.com/jvm/entur-cli/blob/main/AGENTS.md) for the full workflow inventory.
 
 All workflows pin actions by SHA, request the minimum permissions needed, and disable credential persistence at checkout. Run the local equivalents before pushing with `npm run security:local`; lefthook additionally runs betterleaks on pre-commit and `npm run validate` on pre-push.

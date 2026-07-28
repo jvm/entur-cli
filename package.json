@@ -7,13 +7,29 @@
     "type": "git",
     "url": "git+https://github.com/jvm/entur-cli.git"
   },
+  "homepage": "https://github.com/jvm/entur-cli#readme",
+  "bugs": {
+    "url": "https://github.com/jvm/entur-cli/issues"
+  },
+  "author": "Jose Mocito",
+  "keywords": [
+    "entur",
+    "cli",
+    "norway",
+    "public-transport",
+    "transit",
+    "journey-planner",
+    "geocoder",
+    "mobility"
+  ],
   "type": "module",
   "bin": {
     "entur": "bin/entur.js"
   },
   "files": [
     "bin",
-    "src"
+    "src",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
@@ -21,7 +37,7 @@
     "audit": "npm audit --omit=dev --audit-level=high",
     "verify-pack": "npm pack --dry-run",
     "validate": "npm test && npm run audit",
-    "security:secrets": "betterleaks dir . --no-banner --redact --exit-code=2",
+    "security:secrets": "bash scripts/dev-security.sh secrets",
     "security:scripts": "bash scripts/dev-security.sh scripts",
     "security:workflows": "bash scripts/dev-security.sh workflows",
     "security:local": "npm run audit && npm run security:secrets && npm run security:scripts && npm run security:workflows",
