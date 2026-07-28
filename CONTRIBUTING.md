@@ -21,7 +21,8 @@ node bin/entur.js --help
 ```
 
 Before pushing, lefthook runs betterleaks on staged files (`pre-commit`) and `npm run validate`
-(`pre-push`).
+(`pre-push`). `npm run security:local` runs optional external tools (betterleaks, shellcheck,
+actionlint); each is skipped with a notice if not installed, and all are enforced in CI regardless.
 
 ## Pull requests
 

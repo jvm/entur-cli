@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Local developer security helpers used by `npm run security:scripts` and
-# `npm run security:workflows`. Each subcommand skips gracefully ONLY when its
+# Local developer security helpers used by `npm run security:scripts`,
+# `security:workflows`, and `security:secrets`. Each subcommand skips gracefully ONLY when its
 # tool is missing or there is nothing to check; genuine findings still
 # produce a non-zero exit code (no `|| true` masking).
 set -euo pipefail
@@ -33,11 +33,20 @@ run_workflows() {
   actionlint .github/workflows/*.yml
 }
 
+run_secrets() {
+  if ! command -v betterleaks >/dev/null 2>&1; then
+    echo "betterleaks not installed; skipping secret scan (CI enforces it)" >&2
+    return 0
+  fi
+  betterleaks dir . --no-banner --redact --exit-code=2
+}
+
 case "${1:-}" in
   scripts) run_scripts ;;
   workflows) run_workflows ;;
+  secrets) run_secrets ;;
   *)
-    echo "usage: $0 {scripts|workflows}" >&2
+    echo "usage: $0 {scripts|workflows|secrets}" >&2
     exit 2
     ;;
 esac

@@ -25,5 +25,5 @@ Initial public release.
 - Stable exit codes: `0` success, `1` API/network/timeout/cancellation, `2` usage/validation.
 - Per-request `ET-Client-Name` identification (derived, `ENTUR_CLIENT_NAME`, or `--client-name`)
   with `429` rate-limit handling and bounded, cancellable timeouts.
-- CI security and quality gates: betterleaks, CodeQL, Semgrep (SARIF), `npm audit --omit=dev`,
+- CI security and quality checks: betterleaks, CodeQL, Semgrep (SARIF), `npm audit --omit=dev`,
   ShellCheck, actionlint + zizmor, OpenSSF Scorecard, and Dependabot with a 7-day cooldown.
