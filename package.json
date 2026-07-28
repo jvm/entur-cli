@@ -3,6 +3,10 @@
   "version": "0.2.0",
   "description": "A command-line interface for the Entur APIs",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jvm/entur-cli.git"
+  },
   "type": "module",
   "bin": {
     "entur": "bin/entur.js"
